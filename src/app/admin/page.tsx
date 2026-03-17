@@ -1092,9 +1092,7 @@ export default function AdminPage() {
 
           <div className="mt-4 space-y-2">
             {isLoadingLeads && (
-              <p className="text-zinc-400">
-                Đang tải danh sách yêu cầu chờ...
-              </p>
+              <p className="text-zinc-400">Đang tải danh sách yêu cầu chờ...</p>
             )}
 
             {!isLoadingLeads && leads.length === 0 && (

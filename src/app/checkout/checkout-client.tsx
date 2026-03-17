@@ -225,11 +225,14 @@ export default function CheckoutClient({
                 const payload = await response.json();
                 if (!response.ok) {
                   setRequestStatus(
-                    payload.error ?? "Không ghi nhận được yêu cầu trên hệ thống.",
+                    payload.error ??
+                      "Không ghi nhận được yêu cầu trên hệ thống.",
                   );
                   return;
                 }
-                setRequestStatus("Đã ghi nhận yêu cầu mua khóa học trên hệ thống.");
+                setRequestStatus(
+                  "Đã ghi nhận yêu cầu mua khóa học trên hệ thống.",
+                );
               })
               .catch(() => {
                 setRequestStatus("Không thể kết nối API ghi nhận yêu cầu.");

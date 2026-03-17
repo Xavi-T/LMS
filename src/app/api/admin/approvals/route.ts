@@ -107,7 +107,9 @@ export async function POST(request: NextRequest) {
 
   const { data: requestRow, error: requestError } = await supabase
     .from("enrollment_requests")
-    .select("id, full_name, email, phone, course_slug, order_ref, transfer_note, status")
+    .select(
+      "id, full_name, email, phone, course_slug, order_ref, transfer_note, status",
+    )
     .eq("id", requestId)
     .single();
 
