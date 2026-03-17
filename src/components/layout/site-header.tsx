@@ -18,7 +18,12 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAppState();
   const visibleLinks =
-    user?.role === "admin" ? [{ href: "/admin", label: "Quản lý" }] : links;
+    user?.role === "admin"
+      ? [
+          { href: "/admin", label: "Quản lý" },
+          { href: "/admin/courses", label: "QL Khóa học" },
+        ]
+      : links;
 
   const handleLogout = async () => {
     try {

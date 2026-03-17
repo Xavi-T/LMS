@@ -1,11 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { VideoPlayer } from "@/components/learning/video-player";
 import { ProgressBar } from "@/components/common/progress-bar";
-import { flattenLessons, getCourseBySlug, getLessonById } from "@/lib/course";
+import { getCourseBySlug } from "@/lib/course";
 import { useAppState } from "@/contexts/app-context";
+
+type LearningLesson = {
+  id: string;
+  title: string;
+  type: "video" | "text";
+  duration: string;
+  summary: string;
+  content?: string;
+  videoUrl?: string;
+};
+
+type LearningChapter = {
+  id: string;
+  title: string;
+  lessons: LearningLesson[];
+};
+
+type LearningCourse = {
+  slug: string;
+  title: string;
+  chapters: LearningChapter[];
+};
 
 export default function LearningPage({
   params,
@@ -15,10 +37,59 @@ export default function LearningPage({
   const { courseSlug, lessonId } = params;
   const { markLessonComplete, learningProgress, purchasedCourseSlugs } =
     useAppState();
+  const [remoteCourse, setRemoteCourse] = useState<LearningCourse | null>(null);
 
-  const course = getCourseBySlug(courseSlug);
-  const lesson = getLessonById(courseSlug, lessonId);
-  const lessons = useMemo(() => flattenLessons(courseSlug), [courseSlug]);
+  useEffect(() => {
+    let active = true;
+
+    const loadCurriculum = async () => {
+      try {
+        const response = await fetch(`/api/curriculum/${courseSlug}`, {
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok || !result?.course) {
+          return;
+        }
+
+        if (active) {
+          setRemoteCourse(result.course as LearningCourse);
+        }
+      } catch {}
+    };
+
+    void loadCurriculum();
+
+    return () => {
+      active = false;
+    };
+  }, [courseSlug]);
+
+  const fallbackCourse = getCourseBySlug(courseSlug);
+  const course =
+    remoteCourse ??
+    (fallbackCourse
+      ? {
+          slug: fallbackCourse.slug,
+          title: fallbackCourse.title,
+          chapters: fallbackCourse.chapters,
+        }
+      : null);
+
+  const lessons = useMemo(() => {
+    if (!course) {
+      return [] as Array<LearningLesson & { chapterTitle: string }>;
+    }
+
+    return course.chapters.flatMap((chapter) =>
+      chapter.lessons.map((lesson) => ({
+        ...lesson,
+        chapterTitle: chapter.title,
+      })),
+    );
+  }, [course]);
+
+  const lesson = lessons.find((item) => item.id === lessonId);
 
   if (!course || !lesson) {
     return (
