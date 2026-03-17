@@ -12,12 +12,24 @@ const links = [
   { href: "/resources", label: "Kho tài liệu" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/contact", label: "Liên hệ" },
-  { href: "/admin", label: "Admin" },
 ];
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAppState();
+  const visibleLinks =
+    user?.role === "admin"
+      ? [...links, { href: "/admin", label: "Admin" }]
+      : links;
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+    } finally {
+      logout();
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/80 bg-black/90 backdrop-blur">
@@ -27,7 +39,7 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-6 text-sm md:flex">
-          {links.map((item) => (
+          {visibleLinks.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -45,7 +57,7 @@ export function SiteHeader() {
                 {user.name} · {user.role}
               </span>
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 className="btn-secondary px-3 py-2 text-sm"
               >
                 Đăng xuất
@@ -66,7 +78,7 @@ export function SiteHeader() {
       {open && (
         <div className="border-t border-border bg-black md:hidden">
           <div className="container-app space-y-2 py-3">
-            {links.map((item) => (
+            {visibleLinks.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -80,7 +92,7 @@ export function SiteHeader() {
               {user ? (
                 <button
                   onClick={() => {
-                    logout();
+                    handleLogout();
                     setOpen(false);
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"

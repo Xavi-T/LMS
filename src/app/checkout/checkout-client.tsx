@@ -33,13 +33,39 @@ export default function CheckoutClient({
   const [fullName, setFullName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [leadStatus, setLeadStatus] = useState("");
+  const [requestStatus, setRequestStatus] = useState("");
   const [credential, setCredential] = useState<{
     email: string;
     password: string;
     emailStatus: string;
   } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+
+  const validateBuyerInfo = () => {
+    if (!fullName.trim()) {
+      return "Vui lòng nhập họ tên.";
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (
+      !normalizedEmail ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ) {
+      return "Vui lòng nhập email hợp lệ.";
+    }
+
+    const normalizedPhone = phone.replace(/\s+/g, "").replace(/\D/g, "");
+    if (
+      !normalizedPhone ||
+      normalizedPhone.length < 9 ||
+      normalizedPhone.length > 11
+    ) {
+      return "Vui lòng nhập số điện thoại hợp lệ (9-11 số).";
+    }
+
+    return "";
+  };
 
   const discount = useMemo(() => {
     if (!course || !activeCoupon) return 0;
@@ -114,34 +140,9 @@ export default function CheckoutClient({
             placeholder="Số điện thoại"
             className="w-full rounded-lg border border-border bg-black px-3 py-2"
           />
-          <button
-            className="btn-secondary w-full py-2"
-            onClick={async () => {
-              setLeadStatus("");
-              const response = await fetch("/api/facebook/leads", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  fullName,
-                  email,
-                  phone,
-                  packageName,
-                  courseSlug: course.slug,
-                }),
-              });
-
-              const payload = await response.json();
-              if (!response.ok) {
-                setLeadStatus(payload.error ?? "Không lưu được lead Facebook");
-                return;
-              }
-
-              setLeadStatus(`Đã nhận lead Facebook: ${payload.leadId}`);
-            }}
-          >
-            Kéo lead Facebook sang CRM
-          </button>
-          {leadStatus && <p className="text-xs text-zinc-400">{leadStatus}</p>}
+          {requestStatus && (
+            <p className="text-xs text-zinc-400">{requestStatus}</p>
+          )}
         </article>
 
         <article className="card space-y-3 p-4 text-sm">
@@ -166,7 +167,7 @@ export default function CheckoutClient({
             </button>
           </div>
           <p className="text-xs text-zinc-500">
-            Mã demo: SPORT10 (10%), PRINT200 (-200.000đ)
+            Mã đang hỗ trợ: SPORT10 (10%), PRINT200 (-200.000đ)
           </p>
         </article>
       </section>
@@ -175,7 +176,7 @@ export default function CheckoutClient({
         <h2 className="text-lg font-bold">Thông tin thanh toán</h2>
         {!user && (
           <p className="rounded-lg border border-accent/50 bg-accent/10 p-2 text-xs text-orange-100">
-            Bạn chưa đăng nhập. Vẫn có thể tạo đơn demo, nhưng nên đăng nhập để
+            Bạn chưa đăng nhập. Vẫn có thể tạo đơn hàng, nhưng nên đăng nhập để
             quản lý lịch sử giao dịch.
           </p>
         )}
@@ -191,6 +192,14 @@ export default function CheckoutClient({
         <button
           className="btn-primary w-full py-3 text-sm"
           onClick={() => {
+            const validationError = validateBuyerInfo();
+            if (validationError) {
+              setCheckoutError(validationError);
+              return;
+            }
+
+            setCheckoutError("");
+            setRequestStatus("");
             const orderId = purchaseCourse({
               courseSlug: course.slug,
               amount: finalPrice,
@@ -198,10 +207,43 @@ export default function CheckoutClient({
               transferNote,
             });
             setActiveOrderId(orderId);
+
+            fetch("/api/enrollments/request", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fullName: fullName.trim(),
+                email: email.trim().toLowerCase(),
+                phone: phone.trim(),
+                packageName,
+                courseSlug: course.slug,
+                orderRef: orderId,
+                transferNote,
+              }),
+            })
+              .then(async (response) => {
+                const payload = await response.json();
+                if (!response.ok) {
+                  setRequestStatus(
+                    payload.error ?? "Không ghi nhận được yêu cầu trên hệ thống.",
+                  );
+                  return;
+                }
+                setRequestStatus("Đã ghi nhận yêu cầu mua khóa học trên hệ thống.");
+              })
+              .catch(() => {
+                setRequestStatus("Không thể kết nối API ghi nhận yêu cầu.");
+              });
           }}
         >
           Tạo đơn hàng
         </button>
+
+        {checkoutError && (
+          <p className="rounded-lg border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-200">
+            {checkoutError}
+          </p>
+        )}
 
         {activeOrderId && (
           <div className="space-y-3 rounded-xl border border-border p-3 text-sm">
@@ -229,7 +271,14 @@ export default function CheckoutClient({
                   return;
                 }
 
+                const validationError = validateBuyerInfo();
+                if (validationError) {
+                  setCheckoutError(validationError);
+                  return;
+                }
+
                 setIsProcessing(true);
+                setCheckoutError("");
                 markOrderPaid(activeOrderId);
 
                 const response = await fetch("/api/sales/confirm-payment", {
@@ -239,9 +288,9 @@ export default function CheckoutClient({
                     orderId: activeOrderId,
                     transferNote,
                     courseSlug: course.slug,
-                    fullName,
-                    email,
-                    phone,
+                    fullName: fullName.trim(),
+                    email: email.trim().toLowerCase(),
+                    phone: phone.trim(),
                     amount: finalPrice,
                   }),
                 });
@@ -250,7 +299,7 @@ export default function CheckoutClient({
                 setIsProcessing(false);
 
                 if (!response.ok) {
-                  setLeadStatus(
+                  setRequestStatus(
                     payload.error ?? "Không cấp được tài khoản học",
                   );
                   return;
@@ -274,7 +323,7 @@ export default function CheckoutClient({
             </button>
             {activeOrder?.status === "paid" && (
               <p className="rounded-lg bg-green-500/20 p-2 text-center text-xs text-green-300">
-                Thanh toán thành công (mock). Khóa học đã được kích hoạt.
+                Thanh toán thành công. Khóa học đã được kích hoạt.
               </p>
             )}
             {credential && (

@@ -61,6 +61,13 @@ create table if not exists public.course_reviews (
   comment text
 );
 
+create table if not exists public.course_outcomes (
+  id uuid primary key default gen_random_uuid(),
+  course_id uuid not null references public.courses(id) on delete cascade,
+  content text not null,
+  position int not null default 0
+);
+
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
@@ -83,14 +90,17 @@ create table if not exists public.user_progress (
   unique (user_id, lesson_id)
 );
 
-create table if not exists public.facebook_leads (
+drop table if exists public.facebook_leads;
+
+create table if not exists public.enrollment_requests (
   id uuid primary key default gen_random_uuid(),
   full_name text not null,
-  email text,
+  email text not null,
   phone text,
   package_name text,
-  course_slug text,
-  source text not null default 'facebook',
+  course_slug text not null,
+  order_ref text unique,
+  transfer_note text,
   status text not null default 'new' check (status in ('new','contacted','paid','closed')),
   raw_payload jsonb,
   created_at timestamptz not null default now()
@@ -123,18 +133,31 @@ alter table public.chapters enable row level security;
 alter table public.lessons enable row level security;
 alter table public.course_resources enable row level security;
 alter table public.course_reviews enable row level security;
+alter table public.course_outcomes enable row level security;
 alter table public.orders enable row level security;
 alter table public.user_progress enable row level security;
-alter table public.facebook_leads enable row level security;
+alter table public.enrollment_requests enable row level security;
 alter table public.customer_accounts enable row level security;
 alter table public.email_delivery_logs enable row level security;
 
 -- Read-only public policies for catalog pages
-create policy if not exists "public read courses" on public.courses for select using (true);
-create policy if not exists "public read chapters" on public.chapters for select using (true);
-create policy if not exists "public read lessons" on public.lessons for select using (true);
-create policy if not exists "public read resources" on public.course_resources for select using (true);
-create policy if not exists "public read reviews" on public.course_reviews for select using (true);
+drop policy if exists "public read courses" on public.courses;
+create policy "public read courses" on public.courses for select using (true);
+
+drop policy if exists "public read chapters" on public.chapters;
+create policy "public read chapters" on public.chapters for select using (true);
+
+drop policy if exists "public read lessons" on public.lessons;
+create policy "public read lessons" on public.lessons for select using (true);
+
+drop policy if exists "public read resources" on public.course_resources;
+create policy "public read resources" on public.course_resources for select using (true);
+
+drop policy if exists "public read reviews" on public.course_reviews;
+create policy "public read reviews" on public.course_reviews for select using (true);
+
+drop policy if exists "public read outcomes" on public.course_outcomes;
+create policy "public read outcomes" on public.course_outcomes for select using (true);
 
 -- Storage bucket setup
 insert into storage.buckets (id, name, public)
@@ -143,7 +166,8 @@ on conflict (id) do nothing;
 
 -- Allow signed URL creation via service role (handled by API route).
 -- Optional: allow authenticated users to read objects if needed.
-create policy if not exists "authenticated read resource objects"
+drop policy if exists "authenticated read resource objects" on storage.objects;
+create policy "authenticated read resource objects"
 on storage.objects
 for select
 to authenticated

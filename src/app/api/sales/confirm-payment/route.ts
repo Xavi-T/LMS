@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import { sendAccountEmailViaEmailJs } from "@/lib/email/emailjs";
 
 const createPassword = () => Math.random().toString(36).slice(-10) + "@2026";
 
@@ -19,10 +20,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const email =
-    emailInput && emailInput.includes("@")
-      ? emailInput
-      : `${phone ?? "hocvien"}@sportprint.local`;
+  if (!emailInput || !emailInput.includes("@")) {
+    return NextResponse.json(
+      { error: "Email hợp lệ là bắt buộc để cấp tài khoản học viên." },
+      { status: 400 },
+    );
+  }
+
+  const email = emailInput.trim().toLowerCase();
   const password = createPassword();
 
   const supabase = getSupabaseServiceClient();
@@ -32,7 +37,7 @@ export async function POST(request: NextRequest) {
       password,
       emailStatus: "queued-local",
       message:
-        "SUPABASE_SERVICE_ROLE_KEY chưa cấu hình, tài khoản được cấp ở chế độ mock.",
+        "SUPABASE_SERVICE_ROLE_KEY chưa cấu hình, tài khoản được cấp ở chế độ local.",
     });
   }
 
@@ -71,14 +76,49 @@ export async function POST(request: NextRequest) {
   }
 
   await supabase
-    .from("facebook_leads")
+    .from("enrollment_requests")
     .update({ status: "paid" })
-    .or(`email.eq.${email},phone.eq.${phone ?? ""}`);
+    .eq("order_ref", orderId);
+
+  const emailSendResult = await sendAccountEmailViaEmailJs({
+    toEmail: email,
+    studentName: fullName ?? "Học viên",
+    courseSlug: courseSlug,
+    loginEmail: email,
+    loginPassword: password,
+    orderRef: orderId,
+    transferNote,
+    source: "checkout",
+  });
+
+  if (emailSendResult.sent) {
+    await supabase
+      .from("email_delivery_logs")
+      .update({ status: "sent" })
+      .eq("email", email)
+      .eq("subject", "Tài khoản học tập SPORTPRINT LMS")
+      .eq("status", "queued");
+  } else {
+    await supabase
+      .from("email_delivery_logs")
+      .update({
+        status: "failed",
+        body:
+          `Xin chào ${fullName ?? "Học viên"}, tài khoản học tập của bạn đã được kích hoạt. ` +
+          `Email: ${email} | Mật khẩu: ${password} | Mã đơn: ${orderId} | Nội dung CK: ${transferNote} | EmailJS error: ${emailSendResult.error}`,
+      })
+      .eq("email", email)
+      .eq("subject", "Tài khoản học tập SPORTPRINT LMS")
+      .eq("status", "queued");
+  }
 
   return NextResponse.json({
     email,
     password,
-    emailStatus: "queued",
-    message: "Đã tạo tài khoản và đưa email vào hàng đợi gửi tự động.",
+    emailStatus: emailSendResult.sent ? "sent" : "failed",
+    message: emailSendResult.sent
+      ? "Đã tạo tài khoản và gửi email thành công qua EmailJS."
+      : "Đã tạo tài khoản nhưng gửi email thất bại, vui lòng kiểm tra cấu hình EmailJS.",
+    emailError: emailSendResult.error,
   });
 }
