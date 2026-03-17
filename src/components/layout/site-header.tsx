@@ -18,9 +18,7 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAppState();
   const visibleLinks =
-    user?.role === "admin"
-      ? [...links, { href: "/admin", label: "Admin" }]
-      : links;
+    user?.role === "admin" ? [{ href: "/admin", label: "Quản lý" }] : links;
 
   const handleLogout = async () => {
     try {

@@ -118,13 +118,20 @@ const getInitialState = (): PersistedAppState => {
 const AppContext = createContext<AppState | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<PersistedAppState>(() =>
-    getInitialState(),
-  );
+  const [state, setState] = useState<PersistedAppState>(() => emptyState());
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
+    setState(getInitialState());
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+  }, [isHydrated, state]);
 
   const loginAs = useCallback(
     (

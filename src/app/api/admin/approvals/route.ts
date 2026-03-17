@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAdminRequest } from "@/lib/auth/admin";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { sendAccountEmailViaEmailJs } from "@/lib/email/emailjs";
+import { formatSupabaseError } from "@/lib/supabase/errors";
 
 const createPassword = () => Math.random().toString(36).slice(-10) + "@2026";
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
   }
 
   return NextResponse.json({ requests: data ?? [] });
@@ -77,7 +78,7 @@ export async function PATCH(request: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
   }
 
   return NextResponse.json({ request: data });
@@ -114,7 +115,10 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (requestError) {
-    return NextResponse.json({ error: requestError.message }, { status: 500 });
+    return NextResponse.json(
+      { error: formatSupabaseError(requestError) },
+      { status: 500 },
+    );
   }
 
   if (!requestRow.email || !requestRow.email.includes("@")) {
@@ -150,7 +154,10 @@ export async function POST(request: NextRequest) {
     );
 
   if (accountError) {
-    return NextResponse.json({ error: accountError.message }, { status: 500 });
+    return NextResponse.json(
+      { error: formatSupabaseError(accountError) },
+      { status: 500 },
+    );
   }
 
   const { error: requestUpdateError } = await supabase
@@ -160,7 +167,7 @@ export async function POST(request: NextRequest) {
 
   if (requestUpdateError) {
     return NextResponse.json(
-      { error: requestUpdateError.message },
+      { error: formatSupabaseError(requestUpdateError) },
       { status: 500 },
     );
   }

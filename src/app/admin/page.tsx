@@ -4,23 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 import { useAppState } from "@/contexts/app-context";
 
-type Tab =
-  | "students"
-  | "courses"
-  | "resources"
-  | "approvals"
-  | "orders"
-  | "stats";
-
-const tabs: { id: Tab; label: string }[] = [
-  { id: "students", label: "Học viên" },
-  { id: "courses", label: "Khóa học" },
-  { id: "resources", label: "Tài liệu" },
-  { id: "approvals", label: "Phê duyệt" },
-  { id: "orders", label: "Đơn hàng" },
-  { id: "stats", label: "Thống kê" },
-];
-
 type AdminUser = {
   id: string;
   full_name: string | null;
@@ -65,14 +48,27 @@ type LeadItem = {
   created_at: string;
 };
 
+type AdminTab =
+  | "overview"
+  | "approvals"
+  | "users"
+  | "courses"
+  | "resources"
+  | "orders";
+
 export default function AdminPage() {
   const { user, orders, purchasedCourseSlugs } = useAppState();
-  const [tab, setTab] = useState<Tab>("students");
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [coursesData, setCoursesData] = useState<AdminCourse[]>([]);
   const [resources, setResources] = useState<AdminResource[]>([]);
   const [leads, setLeads] = useState<LeadItem[]>([]);
+  const [activeTab, setActiveTab] = useState<AdminTab>("approvals");
+
+  const [userKeyword, setUserKeyword] = useState("");
+  const [leadStatusFilter, setLeadStatusFilter] = useState<
+    "all" | "new" | "contacted" | "paid" | "closed"
+  >("all");
 
   const [userError, setUserError] = useState("");
   const [courseError, setCourseError] = useState("");
@@ -149,6 +145,9 @@ export default function AdminPage() {
 
   const activeUsers = users.filter((item) => item.status === "active").length;
   const blockedUsers = users.filter((item) => item.status === "blocked").length;
+  const pendingApprovals = leads.filter(
+    (item) => item.status === "new" || item.status === "contacted",
+  ).length;
 
   const courseMap = useMemo(() => {
     return new Map(coursesData.map((item) => [item.id, item]));
@@ -157,6 +156,32 @@ export default function AdminPage() {
   const courseSlugMap = useMemo(() => {
     return new Map(coursesData.map((item) => [item.slug, item.title]));
   }, [coursesData]);
+
+  const filteredUsers = useMemo(() => {
+    const keyword = userKeyword.trim().toLowerCase();
+    if (!keyword) return users;
+
+    return users.filter((item) => {
+      const fullName = item.full_name?.toLowerCase() ?? "";
+      const email = item.email.toLowerCase();
+      const phone = item.phone?.toLowerCase() ?? "";
+      const course = item.course_slug.toLowerCase();
+      return (
+        fullName.includes(keyword) ||
+        email.includes(keyword) ||
+        phone.includes(keyword) ||
+        course.includes(keyword)
+      );
+    });
+  }, [userKeyword, users]);
+
+  const filteredLeads = useMemo(() => {
+    if (leadStatusFilter === "all") return leads;
+    return leads.filter((item) => item.status === leadStatusFilter);
+  }, [leadStatusFilter, leads]);
+
+  const isRefreshing =
+    isLoadingUsers || isLoadingCourses || isLoadingResources || isLoadingLeads;
 
   const loadUsers = async () => {
     setIsLoadingUsers(true);
@@ -284,25 +309,11 @@ export default function AdminPage() {
       return;
     }
 
-    if (tab === "students") {
-      loadUsers();
-      loadCourses();
-    }
-
-    if (tab === "courses") {
-      loadCourses();
-    }
-
-    if (tab === "resources") {
-      loadCourses();
-      loadResources();
-    }
-
-    if (tab === "approvals") {
-      loadLeads();
-      loadCourses();
-    }
-  }, [tab, user?.role]);
+    loadUsers();
+    loadCourses();
+    loadResources();
+    loadLeads();
+  }, [user?.role]);
 
   const createUser = async () => {
     setIsSubmittingUser(true);
@@ -550,31 +561,120 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="container-app space-y-5 py-6 md:py-10">
-      <div>
-        <p className="text-xs uppercase tracking-wider text-accent">
-          Admin Panel
-        </p>
-        <h1 className="text-2xl font-black md:text-4xl">
-          Quản trị LMS SportPrint
-        </h1>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((item) => (
+    <div className="container-app space-y-5 py-6 md:space-y-6 md:py-10">
+      <div className="card p-4 md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-accent">
+              Admin Panel
+            </p>
+            <h1 className="text-2xl font-black md:text-4xl">
+              Quản trị LMS SportPrint
+            </h1>
+            <p className="mt-2 text-sm text-zinc-400">
+              Một trang quản lý tập trung: duyệt học viên, quản lý học viên,
+              khóa học và tài liệu.
+            </p>
+          </div>
           <button
-            key={item.id}
-            onClick={() => setTab(item.id)}
-            className={`rounded-lg px-3 py-2 text-sm ${tab === item.id ? "bg-accent font-bold text-black" : "border border-border"}`}
+            className="btn-secondary px-4 py-2 text-sm"
+            onClick={() => {
+              loadUsers();
+              loadCourses();
+              loadResources();
+              loadLeads();
+            }}
+            disabled={isRefreshing}
           >
-            {item.label}
+            Tải lại dữ liệu
           </button>
-        ))}
+        </div>
       </div>
 
-      {tab === "courses" && (
-        <section className="card p-4">
-          <h2 className="text-lg font-bold">Quản lý khóa học</h2>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <article className="card p-4">
+          <p className="text-xs text-zinc-400">Yêu cầu chờ duyệt</p>
+          <p className="mt-1 text-2xl font-black text-accent">
+            {pendingApprovals}
+          </p>
+        </article>
+        <article className="card p-4">
+          <p className="text-xs text-zinc-400">Tổng học viên</p>
+          <p className="mt-1 text-2xl font-black">{users.length}</p>
+        </article>
+        <article className="card p-4">
+          <p className="text-xs text-zinc-400">Khóa học</p>
+          <p className="mt-1 text-2xl font-black">{coursesData.length}</p>
+        </article>
+        <article className="card p-4">
+          <p className="text-xs text-zinc-400">Đơn hàng</p>
+          <p className="mt-1 text-2xl font-black">{orders.length}</p>
+        </article>
+        <article className="card p-4">
+          <p className="text-xs text-zinc-400">Doanh thu đã thanh toán</p>
+          <p className="mt-1 text-2xl font-black text-accent">
+            {formatCurrency(revenue)}
+          </p>
+        </article>
+      </section>
+
+      <section className="card p-2">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["overview", "Tổng quan"],
+              ["approvals", `Phê duyệt (${pendingApprovals})`],
+              ["users", "Học viên"],
+              ["courses", "Khóa học"],
+              ["resources", "Tài liệu"],
+              ["orders", "Đơn hàng"],
+            ] as Array<[AdminTab, string]>
+          ).map(([tab, label]) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`rounded-lg border px-3 py-2 text-sm transition ${
+                activeTab === tab
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border text-zinc-300 hover:border-accent/60"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {activeTab === "overview" && (
+        <section className="grid gap-3 md:grid-cols-2">
+          <article className="card p-4">
+            <h2 className="text-lg font-bold">Trọng tâm hôm nay</h2>
+            <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+              <li>- Yêu cầu chờ duyệt: {pendingApprovals}</li>
+              <li>- Học viên active: {activeUsers}</li>
+              <li>- Học viên blocked: {blockedUsers}</li>
+              <li>- Tài liệu đã tạo: {resources.length}</li>
+            </ul>
+          </article>
+          <article className="card p-4">
+            <h2 className="text-lg font-bold">Gợi ý thao tác</h2>
+            <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+              <li>- Vào tab Phê duyệt để cấp tài khoản sau thanh toán.</li>
+              <li>- Vào tab Học viên để khóa/mở khóa hoặc reset mật khẩu.</li>
+              <li>- Vào tab Khóa học và Tài liệu để cập nhật nội dung học.</li>
+            </ul>
+          </article>
+        </section>
+      )}
+
+      {activeTab === "courses" && (
+        <section className="card p-4 md:p-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-lg font-bold">Quản lý khóa học</h2>
+            <p className="text-xs text-zinc-500">
+              {coursesData.length} khóa học
+            </p>
+          </div>
           {courseError && (
             <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
               {courseError}
@@ -722,11 +822,13 @@ export default function AdminPage() {
         </section>
       )}
 
-      {tab === "students" && (
-        <section className="card p-4 text-sm">
-          <h2 className="text-lg font-bold">Quản lý học viên</h2>
-          <p className="mt-2 text-zinc-300">Tổng số user: {users.length}</p>
-          <p className="text-zinc-400">
+      {activeTab === "users" && (
+        <section className="card p-4 text-sm md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-bold">Quản lý học viên</h2>
+            <p className="text-xs text-zinc-500">{users.length} học viên</p>
+          </div>
+          <p className="mt-2 text-zinc-400">
             Active: {activeUsers} · Blocked: {blockedUsers} · Khóa đã kích hoạt
             local: {purchasedCourseSlugs.length}
           </p>
@@ -799,16 +901,28 @@ export default function AdminPage() {
             </p>
           )}
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <input
+              value={userKeyword}
+              onChange={(event) => setUserKeyword(event.target.value)}
+              placeholder="Tìm theo tên, email, điện thoại hoặc khóa học"
+              className="rounded-lg border border-border bg-black px-3 py-2 md:col-span-2"
+            />
+            <div className="rounded-lg border border-border bg-black px-3 py-2 text-xs text-zinc-400">
+              Hiển thị: {filteredUsers.length} / {users.length}
+            </div>
+          </div>
+
+          <div className="mt-4 max-h-105 space-y-2 overflow-y-auto pr-1">
             {isLoadingUsers && (
               <p className="text-zinc-400">Đang tải danh sách user...</p>
             )}
 
-            {!isLoadingUsers && users.length === 0 && (
+            {!isLoadingUsers && filteredUsers.length === 0 && (
               <p className="text-zinc-400">Chưa có user trong hệ thống.</p>
             )}
 
-            {users.map((item) => (
+            {filteredUsers.map((item) => (
               <article
                 key={item.id}
                 className="rounded-lg border border-border p-3"
@@ -856,17 +970,20 @@ export default function AdminPage() {
         </section>
       )}
 
-      {tab === "orders" && (
-        <section className="card p-4 text-sm">
-          <h2 className="text-lg font-bold">Quản lý đơn hàng</h2>
-          <div className="mt-3 space-y-2">
+      {activeTab === "orders" && (
+        <section className="card p-4 text-sm md:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-bold">Quản lý đơn hàng</h2>
+            <p className="text-xs text-zinc-500">{orders.length} đơn hàng</p>
+          </div>
+          <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
             {orders.length === 0 && (
               <p className="text-zinc-400">Chưa có đơn hàng.</p>
             )}
             {orders.map((order) => (
               <div
                 key={order.id}
-                className="rounded-lg border border-border p-2"
+                className="rounded-lg border border-border p-3"
               >
                 <p className="font-semibold">{order.id}</p>
                 <p className="text-xs text-zinc-400">
@@ -881,9 +998,12 @@ export default function AdminPage() {
         </section>
       )}
 
-      {tab === "resources" && (
-        <section className="card p-4 text-sm">
-          <h2 className="text-lg font-bold">Quản lý tài liệu khóa học</h2>
+      {activeTab === "resources" && (
+        <section className="card p-4 text-sm md:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-bold">Quản lý tài liệu khóa học</h2>
+            <p className="text-xs text-zinc-500">{resources.length} tài liệu</p>
+          </div>
 
           {resourceError && (
             <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
@@ -964,7 +1084,7 @@ export default function AdminPage() {
             </button>
           </div>
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 max-h-105 space-y-2 overflow-y-auto pr-1">
             {isLoadingResources && (
               <p className="text-zinc-400">Đang tải tài liệu...</p>
             )}
@@ -1073,9 +1193,36 @@ export default function AdminPage() {
         </section>
       )}
 
-      {tab === "approvals" && (
-        <section className="card p-4 text-sm">
-          <h2 className="text-lg font-bold">Trạng thái yêu cầu & phê duyệt</h2>
+      {activeTab === "approvals" && (
+        <section className="card p-4 text-sm md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-bold">
+              Trạng thái yêu cầu & phê duyệt
+            </h2>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-zinc-500">Lọc trạng thái</span>
+              <select
+                value={leadStatusFilter}
+                onChange={(event) =>
+                  setLeadStatusFilter(
+                    event.target.value as
+                      | "all"
+                      | "new"
+                      | "contacted"
+                      | "paid"
+                      | "closed",
+                  )
+                }
+                className="rounded-lg border border-border bg-black px-3 py-2"
+              >
+                <option value="all">Tất cả</option>
+                <option value="new">Mới</option>
+                <option value="contacted">Đã liên hệ</option>
+                <option value="paid">Đã duyệt</option>
+                <option value="closed">Đã từ chối</option>
+              </select>
+            </div>
+          </div>
 
           {approvalError && (
             <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
@@ -1090,16 +1237,16 @@ export default function AdminPage() {
             </p>
           )}
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 max-h-105 space-y-2 overflow-y-auto pr-1">
             {isLoadingLeads && (
               <p className="text-zinc-400">Đang tải danh sách yêu cầu chờ...</p>
             )}
 
-            {!isLoadingLeads && leads.length === 0 && (
+            {!isLoadingLeads && filteredLeads.length === 0 && (
               <p className="text-zinc-400">Chưa có yêu cầu cần phê duyệt.</p>
             )}
 
-            {leads.map((lead) => (
+            {filteredLeads.map((lead) => (
               <article
                 key={lead.id}
                 className="rounded-lg border border-border p-3"
@@ -1112,7 +1259,14 @@ export default function AdminPage() {
                   {lead.course_slug
                     ? courseSlugMap.get(lead.course_slug) || lead.course_slug
                     : "(chưa chọn khóa)"}{" "}
-                  · Trạng thái: {lead.status}
+                  · Trạng thái:{" "}
+                  {lead.status === "new"
+                    ? "Mới"
+                    : lead.status === "contacted"
+                      ? "Đã liên hệ"
+                      : lead.status === "paid"
+                        ? "Đã duyệt"
+                        : "Đã từ chối"}
                 </p>
 
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -1141,25 +1295,6 @@ export default function AdminPage() {
               </article>
             ))}
           </div>
-        </section>
-      )}
-
-      {tab === "stats" && (
-        <section className="grid gap-4 md:grid-cols-3">
-          <article className="card p-4">
-            <p className="text-xs text-zinc-400">Doanh thu đã thanh toán</p>
-            <p className="mt-1 text-2xl font-black text-accent">
-              {formatCurrency(revenue)}
-            </p>
-          </article>
-          <article className="card p-4">
-            <p className="text-xs text-zinc-400">Số khóa học</p>
-            <p className="mt-1 text-2xl font-black">{coursesData.length}</p>
-          </article>
-          <article className="card p-4">
-            <p className="text-xs text-zinc-400">Số đơn hàng</p>
-            <p className="mt-1 text-2xl font-black">{orders.length}</p>
-          </article>
         </section>
       )}
     </div>

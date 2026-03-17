@@ -22,8 +22,7 @@ export default function CheckoutClient({
   packagePrice?: number;
 }) {
   const course = getCourseBySlug(courseSlug);
-  const { user, purchaseCourse, markOrderPaid, orders, saveIssuedCredential } =
-    useAppState();
+  const { user, purchaseCourse, markOrderPaid, orders } = useAppState();
   const [couponInput, setCouponInput] = useState("");
   const [activeCoupon, setActiveCoupon] = useState<keyof typeof coupons | null>(
     null,
@@ -34,11 +33,6 @@ export default function CheckoutClient({
   const [email, setEmail] = useState(user?.email ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [requestStatus, setRequestStatus] = useState("");
-  const [credential, setCredential] = useState<{
-    email: string;
-    password: string;
-    emailStatus: string;
-  } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
 
@@ -303,45 +297,26 @@ export default function CheckoutClient({
 
                 if (!response.ok) {
                   setRequestStatus(
-                    payload.error ?? "Không cấp được tài khoản học",
+                    payload.error ?? "Không ghi nhận được yêu cầu phê duyệt",
                   );
                   return;
                 }
 
-                setCredential({
-                  email: payload.email,
-                  password: payload.password,
-                  emailStatus: payload.emailStatus,
-                });
-                saveIssuedCredential({
-                  email: payload.email,
-                  password: payload.password,
-                  courseSlug: course.slug,
-                });
+                setRequestStatus(
+                  payload.message ??
+                    "Đã gửi yêu cầu, vui lòng chờ admin phê duyệt để nhận tài khoản qua email.",
+                );
               }}
             >
               {isProcessing
-                ? "Đang cấp tài khoản..."
-                : "Tôi đã chuyển khoản (cấp tài khoản)"}
+                ? "Đang gửi yêu cầu phê duyệt..."
+                : "Tôi đã chuyển khoản (gửi admin duyệt)"}
             </button>
             {activeOrder?.status === "paid" && (
               <p className="rounded-lg bg-green-500/20 p-2 text-center text-xs text-green-300">
-                Thanh toán thành công. Khóa học đã được kích hoạt.
+                Thanh toán đã ghi nhận. Vui lòng chờ admin phê duyệt để kích
+                hoạt tài khoản học tập.
               </p>
-            )}
-            {credential && (
-              <div className="space-y-2 rounded-lg border border-accent/40 bg-accent/10 p-2 text-xs text-orange-100">
-                <p className="font-semibold">Tài khoản học đã tạo tự động</p>
-                <p>Email: {credential.email}</p>
-                <p>Mật khẩu: {credential.password}</p>
-                <p>Trạng thái email: {credential.emailStatus}</p>
-                <Link
-                  href={`/login?email=${encodeURIComponent(credential.email)}&password=${encodeURIComponent(credential.password)}`}
-                  className="inline-block rounded-md bg-accent px-2 py-1 font-bold text-black"
-                >
-                  Đăng nhập vào khóa học
-                </Link>
-              </div>
             )}
           </div>
         )}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
+import { formatSupabaseError } from "@/lib/supabase/errors";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
   }
 
   return NextResponse.json({ requestId: data.id, status: "saved" });
