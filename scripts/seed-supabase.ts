@@ -39,7 +39,7 @@ const isTransientError = (message: string) => {
 
 async function withRetry<T>(
   label: string,
-  fn: () => Promise<T>,
+  fn: () => PromiseLike<T>,
   maxRetries = 5,
 ) {
   let attempt = 0;
