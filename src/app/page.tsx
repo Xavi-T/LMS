@@ -1,65 +1,137 @@
-import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ShieldCheck,
+  Smartphone,
+} from "lucide-react";
+import { CourseCard } from "@/components/course/course-card";
+import { courses, feedbacks } from "@/lib/mock-data";
 
 export default function Home() {
+  const featured = courses.slice(0, 3);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <div className="space-y-14 pb-14">
+      <section className="border-b border-border">
+        <div className="container-app grid gap-8 py-8 md:grid-cols-2 md:items-center md:py-14">
+          <div>
+            <p className="mb-3 inline-block rounded-full bg-accent px-3 py-1 text-xs font-bold text-black">
+              LMS ngành In ấn & Thể thao
+            </p>
+            <h1 className="text-3xl font-black leading-tight md:text-5xl">
+              Học kỹ thuật in áo thể thao
+              <span className="text-accent"> theo chuẩn xưởng thực chiến</span>
+            </h1>
+            <p className="mt-4 text-sm text-zinc-300 md:text-base">
+              Bán khóa học, học online trên mobile, tải file thiết kế và thanh
+              toán VietQR trong một hệ thống.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <Link
+                href="/chuong-trinh-thuc-chien"
+                className="btn-secondary px-4 py-3 text-sm"
+              >
+                Xem chương trình
+              </Link>
+              <Link href="/courses" className="btn-primary px-4 py-3 text-sm">
+                Xem khóa học
+              </Link>
+              <Link
+                href="/checkout?course=xuong-in-the-thao-thuc-chien"
+                className="btn-secondary px-4 py-3 text-sm"
+              >
+                Mua ngay
+              </Link>
+            </div>
+          </div>
+          <div className="card overflow-hidden p-2">
+            <div
+              className="h-64 rounded-xl bg-cover bg-center md:h-80"
+              style={{
+                backgroundImage:
+                  "url(https://images.unsplash.com/photo-1586941960715-4f59fe28f0df?q=80&w=1200&auto=format&fit=crop)",
+              }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
         </div>
-      </main>
+
+        <div className="container-app mt-6 grid gap-3 pb-6 md:grid-cols-3">
+          <div className="card p-4">
+            <Smartphone className="text-accent" size={18} />
+            <p className="mt-2 text-sm font-semibold">Mobile-first Learning</p>
+            <p className="text-xs text-zinc-400">
+              80% học viên học trên điện thoại, UI tối ưu thao tác 1 tay.
+            </p>
+          </div>
+          <div className="card p-4">
+            <ShieldCheck className="text-accent" size={18} />
+            <p className="mt-2 text-sm font-semibold">Bảo vệ nội dung học</p>
+            <p className="text-xs text-zinc-400">
+              Kiến trúc sẵn sàng nâng cấp Bunny/S3 CDN chống lộ video.
+            </p>
+          </div>
+          <div className="card p-4">
+            <CheckCircle2 className="text-accent" size={18} />
+            <p className="mt-2 text-sm font-semibold">Tối ưu chuyển đổi bán</p>
+            <p className="text-xs text-zinc-400">
+              CTA rõ ràng: xem khóa học, mua ngay, bắt đầu học.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="container-app">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold md:text-2xl">Khóa học nổi bật</h2>
+          <Link href="/courses" className="text-sm text-accent">
+            Xem tất cả <ArrowRight className="inline" size={14} />
+          </Link>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {featured.map((course) => (
+            <CourseCard key={course.slug} course={course} />
+          ))}
+        </div>
+      </section>
+
+      <section className="container-app">
+        <h2 className="mb-4 text-xl font-bold md:text-2xl">
+          Feedback học viên
+        </h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {feedbacks.map((item) => (
+            <blockquote
+              key={item.name}
+              className="card p-4 text-sm text-zinc-200"
+            >
+              “{item.quote}”
+              <footer className="mt-3 text-xs text-zinc-400">
+                — {item.name}
+              </footer>
+            </blockquote>
+          ))}
+        </div>
+      </section>
+
+      <section className="container-app">
+        <div className="card flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between md:p-8">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-accent">
+              Bắt đầu ngay
+            </p>
+            <h3 className="text-xl font-black md:text-3xl">
+              Nâng cấp kỹ năng in ấn & kinh doanh thể thao
+            </h3>
+          </div>
+          <Link
+            href="/courses"
+            className="btn-primary inline-flex items-center justify-center px-4 py-3 text-sm"
+          >
+            Bắt đầu học
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
