@@ -61,7 +61,10 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: formatSupabaseError(error) },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ requestId: data.id, status: "saved" });

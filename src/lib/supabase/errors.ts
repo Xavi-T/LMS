@@ -3,7 +3,9 @@ type SupabaseLikeError = {
   message?: string;
 };
 
-export const formatSupabaseError = (error: SupabaseLikeError | null | undefined) => {
+export const formatSupabaseError = (
+  error: SupabaseLikeError | null | undefined,
+) => {
   if (!error) {
     return "Lỗi Supabase không xác định.";
   }
