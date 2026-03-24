@@ -46,6 +46,19 @@ type ManagedResource = {
   storage_path: string;
 };
 
+const normalizeCourseSlug = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "d")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const CREATE_COURSE_DRAFT_KEY = "lms_admin_create_course_draft";
+
 export default function AdminCourseModulePage() {
   const { user } = useAppState();
 
@@ -58,6 +71,7 @@ export default function AdminCourseModulePage() {
   const [loadingStructure, setLoadingStructure] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingLabel, setUploadingLabel] = useState("");
+  const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -69,7 +83,7 @@ export default function AdminCourseModulePage() {
     detailedDescription: "",
     category: "in-an" as "in-an" | "thiet-ke" | "kinh-doanh",
     level: "Cơ bản" as "Cơ bản" | "Nâng cao",
-    price: 0,
+    price: "",
     thumbnail: "",
     introVideoUrl: "",
   });
@@ -118,6 +132,43 @@ export default function AdminCourseModulePage() {
       }
     >
   >({});
+
+  const formFieldClass =
+    "w-full rounded-lg border border-border bg-black px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20";
+  const labelClass = "text-xs font-medium tracking-wide text-zinc-400";
+
+  const handleNewCourseTitleChange = (title: string) => {
+    const nextSlug = normalizeCourseSlug(title);
+    setNewCourse((prev) => ({
+      ...prev,
+      title,
+      slug: isSlugManuallyEdited ? prev.slug : nextSlug,
+    }));
+  };
+
+  const handleNewCourseSlugChange = (slug: string) => {
+    setIsSlugManuallyEdited(true);
+    setNewCourse((prev) => ({ ...prev, slug: normalizeCourseSlug(slug) }));
+  };
+
+  const normalizePriceInput = (value: string) => {
+    const digits = value.replace(/\D+/g, "");
+    if (!digits) return "";
+    return digits.replace(/^0+(?=\d)/, "");
+  };
+
+  const saveCreateSectionDraft = (sectionName: string) => {
+    try {
+      window.localStorage.setItem(
+        CREATE_COURSE_DRAFT_KEY,
+        JSON.stringify(newCourse),
+      );
+      setSuccess(`Đã lưu nháp section: ${sectionName}.`);
+      setError("");
+    } catch {
+      setError("Không thể lưu nháp tại trình duyệt.");
+    }
+  };
 
   const selectedCourse = useMemo(
     () => courses.find((item) => item.id === selectedCourseId) ?? null,
@@ -259,6 +310,28 @@ export default function AdminCourseModulePage() {
   }, [user?.role]);
 
   useEffect(() => {
+    if (user?.role !== "admin") return;
+
+    try {
+      const rawDraft = window.localStorage.getItem(CREATE_COURSE_DRAFT_KEY);
+      if (!rawDraft) return;
+
+      const parsedDraft = JSON.parse(rawDraft) as Partial<typeof newCourse>;
+      setNewCourse((prev) => ({
+        ...prev,
+        ...parsedDraft,
+        price:
+          typeof parsedDraft.price === "string"
+            ? parsedDraft.price
+            : prev.price,
+      }));
+      setIsSlugManuallyEdited(Boolean(parsedDraft.slug));
+    } catch {
+      setError("Không thể đọc nháp tạo khóa học đã lưu.");
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
     if (!selectedCourseId) return;
 
     const current = courses.find((item) => item.id === selectedCourseId);
@@ -282,11 +355,17 @@ export default function AdminCourseModulePage() {
     setSubmitting(true);
     setError("");
     setSuccess("");
+
+    const createPayload = {
+      ...newCourse,
+      price: Number(newCourse.price || "0"),
+    };
+
     try {
       const response = await fetch("/api/admin/courses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newCourse),
+        body: JSON.stringify(createPayload),
       });
       const result = await response.json();
       if (!response.ok) {
@@ -295,6 +374,8 @@ export default function AdminCourseModulePage() {
       }
 
       setSuccess("Đã tạo khóa học mới.");
+      setIsSlugManuallyEdited(false);
+      window.localStorage.removeItem(CREATE_COURSE_DRAFT_KEY);
       setNewCourse({
         slug: "",
         title: "",
@@ -302,7 +383,7 @@ export default function AdminCourseModulePage() {
         detailedDescription: "",
         category: "in-an",
         level: "Cơ bản",
-        price: 0,
+        price: "",
         thumbnail: "",
         introVideoUrl: "",
       });
@@ -633,161 +714,265 @@ export default function AdminCourseModulePage() {
         </p>
       )}
 
-      <section className="card space-y-3 p-4 md:p-5">
-        <h2 className="text-lg font-bold">Tạo khóa học mới</h2>
-        <div className="grid gap-2 md:grid-cols-3">
-          <input
-            value={newCourse.slug}
-            onChange={(event) =>
-              setNewCourse((prev) => ({ ...prev, slug: event.target.value }))
-            }
-            placeholder="slug (vd: in-an-ao-thun)"
-            className="rounded-lg border border-border bg-black px-3 py-2"
-          />
-          <input
-            value={newCourse.title}
-            onChange={(event) =>
-              setNewCourse((prev) => ({ ...prev, title: event.target.value }))
-            }
-            placeholder="Tên khóa học"
-            className="rounded-lg border border-border bg-black px-3 py-2"
-          />
-          <input
-            type="number"
-            value={newCourse.price}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                price: Number(event.target.value) || 0,
-              }))
-            }
-            placeholder="Giá"
-            className="rounded-lg border border-border bg-black px-3 py-2"
-          />
-          <select
-            value={newCourse.category}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                category: event.target.value as
-                  | "in-an"
-                  | "thiet-ke"
-                  | "kinh-doanh",
-              }))
-            }
-            className="rounded-lg border border-border bg-black px-3 py-2"
-          >
-            <option value="in-an">In ấn</option>
-            <option value="thiet-ke">Thiết kế</option>
-            <option value="kinh-doanh">Kinh doanh</option>
-          </select>
-          <select
-            value={newCourse.level}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                level: event.target.value as "Cơ bản" | "Nâng cao",
-              }))
-            }
-            className="rounded-lg border border-border bg-black px-3 py-2"
-          >
-            <option value="Cơ bản">Cơ bản</option>
-            <option value="Nâng cao">Nâng cao</option>
-          </select>
-          <input
-            value={newCourse.thumbnail}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                thumbnail: event.target.value,
-              }))
-            }
-            placeholder="URL ảnh thumbnail"
-            className="rounded-lg border border-border bg-black px-3 py-2"
-          />
-        </div>
-        <textarea
-          value={newCourse.shortDescription}
-          onChange={(event) =>
-            setNewCourse((prev) => ({
-              ...prev,
-              shortDescription: event.target.value,
-            }))
-          }
-          placeholder="Mô tả ngắn"
-          rows={2}
-          className="w-full rounded-lg border border-border bg-black px-3 py-2"
-        />
-        <textarea
-          value={newCourse.detailedDescription}
-          onChange={(event) =>
-            setNewCourse((prev) => ({
-              ...prev,
-              detailedDescription: event.target.value,
-            }))
-          }
-          placeholder="Mô tả chi tiết"
-          rows={3}
-          className="w-full rounded-lg border border-border bg-black px-3 py-2"
-        />
-        <input
-          value={newCourse.introVideoUrl}
-          onChange={(event) =>
-            setNewCourse((prev) => ({
-              ...prev,
-              introVideoUrl: event.target.value,
-            }))
-          }
-          placeholder="URL video giới thiệu (tuỳ chọn)"
-          className="w-full rounded-lg border border-border bg-black px-3 py-2"
-        />
-        <div className="grid gap-2 md:grid-cols-2">
-          <label className="rounded-lg border border-border px-3 py-2 text-sm text-zinc-300">
-            Upload ảnh thumbnail
-            <input
-              type="file"
-              accept="image/*"
-              className="mt-2 block w-full text-xs"
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                const filePath = await uploadMedia(file, "course-images");
-                if (filePath) {
-                  setNewCourse((prev) => ({ ...prev, thumbnail: filePath }));
+      <details open className="card p-4 md:p-5">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <div>
+            <h2 className="text-lg font-bold">Tạo khóa học mới</h2>
+            <p className="text-xs text-zinc-400">
+              Điền theo từng nhóm thông tin để thao tác nhanh và ít lỗi hơn.
+            </p>
+          </div>
+          <span className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs text-accent">
+            Slug tự tạo theo tên
+          </span>
+        </summary>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3 rounded-xl border border-border p-3">
+            <p className="text-sm font-semibold">Thông tin chính</p>
+            <label className="space-y-1">
+              <span className={labelClass}>Tên khóa học</span>
+              <input
+                value={newCourse.title}
+                onChange={(event) =>
+                  handleNewCourseTitleChange(event.target.value)
                 }
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-          <label className="rounded-lg border border-border px-3 py-2 text-sm text-zinc-300">
-            Upload video giới thiệu
-            <input
-              type="file"
-              accept="video/*"
-              className="mt-2 block w-full text-xs"
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                const filePath = await uploadMedia(file, "course-videos");
-                if (filePath) {
+                placeholder="Ví dụ: In áo thun từ A-Z"
+                className={formFieldClass}
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className={labelClass}>Slug</span>
+              <div className="flex gap-2">
+                <input
+                  value={newCourse.slug}
+                  onChange={(event) =>
+                    handleNewCourseSlugChange(event.target.value)
+                  }
+                  placeholder="in-ao-thun-tu-a-z"
+                  className={formFieldClass}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSlugManuallyEdited(false);
+                    setNewCourse((prev) => ({
+                      ...prev,
+                      slug: normalizeCourseSlug(prev.title),
+                    }));
+                  }}
+                  className="btn-secondary shrink-0 px-3 py-2 text-xs"
+                >
+                  Tạo lại
+                </button>
+              </div>
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 md:col-span-1">
+                <span className={labelClass}>Giá</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={newCourse.price}
+                  onChange={(event) =>
+                    setNewCourse((prev) => ({
+                      ...prev,
+                      price: normalizePriceInput(event.target.value),
+                    }))
+                  }
+                  placeholder="Nhập giá"
+                  className={formFieldClass}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Danh mục</span>
+                <select
+                  value={newCourse.category}
+                  onChange={(event) =>
+                    setNewCourse((prev) => ({
+                      ...prev,
+                      category: event.target.value as
+                        | "in-an"
+                        | "thiet-ke"
+                        | "kinh-doanh",
+                    }))
+                  }
+                  className={formFieldClass}
+                >
+                  <option value="in-an">In ấn</option>
+                  <option value="thiet-ke">Thiết kế</option>
+                  <option value="kinh-doanh">Kinh doanh</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className={labelClass}>Trình độ</span>
+                <select
+                  value={newCourse.level}
+                  onChange={(event) =>
+                    setNewCourse((prev) => ({
+                      ...prev,
+                      level: event.target.value as "Cơ bản" | "Nâng cao",
+                    }))
+                  }
+                  className={formFieldClass}
+                >
+                  <option value="Cơ bản">Cơ bản</option>
+                  <option value="Nâng cao">Nâng cao</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="space-y-1">
+              <span className={labelClass}>Mô tả ngắn</span>
+              <textarea
+                value={newCourse.shortDescription}
+                onChange={(event) =>
                   setNewCourse((prev) => ({
                     ...prev,
-                    introVideoUrl: filePath,
-                  }));
+                    shortDescription: event.target.value,
+                  }))
                 }
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+                placeholder="Mô tả ngắn"
+                rows={2}
+                className={formFieldClass}
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className={labelClass}>Mô tả chi tiết</span>
+              <textarea
+                value={newCourse.detailedDescription}
+                onChange={(event) =>
+                  setNewCourse((prev) => ({
+                    ...prev,
+                    detailedDescription: event.target.value,
+                  }))
+                }
+                placeholder="Mô tả chi tiết"
+                rows={3}
+                className={formFieldClass}
+              />
+            </label>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary px-3 py-2 text-xs"
+                onClick={() => saveCreateSectionDraft("Thông tin chính")}
+              >
+                Lưu section này
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-border p-3">
+            <p className="text-sm font-semibold">Media & upload</p>
+            <label className="space-y-1">
+              <span className={labelClass}>URL ảnh thumbnail</span>
+              <input
+                value={newCourse.thumbnail}
+                onChange={(event) =>
+                  setNewCourse((prev) => ({
+                    ...prev,
+                    thumbnail: event.target.value,
+                  }))
+                }
+                placeholder="https://..."
+                className={formFieldClass}
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className={labelClass}>
+                URL video giới thiệu (tuỳ chọn)
+              </span>
+              <input
+                value={newCourse.introVideoUrl}
+                onChange={(event) =>
+                  setNewCourse((prev) => ({
+                    ...prev,
+                    introVideoUrl: event.target.value,
+                  }))
+                }
+                placeholder="https://..."
+                className={formFieldClass}
+              />
+            </label>
+
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="rounded-lg border border-border bg-black/40 px-3 py-2 text-sm text-zinc-300">
+                Upload ảnh thumbnail
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="mt-2 block w-full text-xs"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const filePath = await uploadMedia(file, "course-images");
+                    if (filePath) {
+                      setNewCourse((prev) => ({
+                        ...prev,
+                        thumbnail: filePath,
+                      }));
+                    }
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              <label className="rounded-lg border border-border bg-black/40 px-3 py-2 text-sm text-zinc-300">
+                Upload video giới thiệu
+                <input
+                  type="file"
+                  accept="video/*"
+                  className="mt-2 block w-full text-xs"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const filePath = await uploadMedia(file, "course-videos");
+                    if (filePath) {
+                      setNewCourse((prev) => ({
+                        ...prev,
+                        introVideoUrl: filePath,
+                      }));
+                    }
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="rounded-lg border border-border bg-black/30 p-3 text-xs text-zinc-300">
+              <p className="font-semibold text-white">
+                {newCourse.title || "Chưa nhập tên khóa học"}
+              </p>
+              <p className="mt-1 text-zinc-500">/{newCourse.slug || "slug"}</p>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary px-3 py-2 text-xs"
+                onClick={() => saveCreateSectionDraft("Media & upload")}
+              >
+                Lưu section này
+              </button>
+            </div>
+          </div>
         </div>
-        <button
-          className="btn-primary px-4 py-2 text-sm"
-          onClick={createCourse}
-          disabled={submitting}
-        >
-          Tạo khóa học
-        </button>
-      </section>
+
+        <div className="flex justify-end">
+          <button
+            className="btn-primary px-5 py-2 text-sm"
+            onClick={createCourse}
+            disabled={submitting}
+          >
+            Tạo khóa học
+          </button>
+        </div>
+      </details>
 
       <section className="grid gap-4 lg:grid-cols-[300px_1fr]">
         <aside className="card p-4">
@@ -824,106 +1009,147 @@ export default function AdminCourseModulePage() {
 
         <div className="space-y-4">
           {selectedCourse && (
-            <section className="card space-y-3 p-4 md:p-5">
-              <h2 className="text-lg font-bold">Thông tin khóa học</h2>
-              <div className="grid gap-2 md:grid-cols-3">
-                <input
-                  value={courseEdit.title}
-                  onChange={(event) =>
-                    setCourseEdit((prev) => ({
-                      ...prev,
-                      title: event.target.value,
-                    }))
-                  }
-                  className="rounded-lg border border-border bg-black px-3 py-2"
-                />
-                <select
-                  value={courseEdit.category}
-                  onChange={(event) =>
-                    setCourseEdit((prev) => ({
-                      ...prev,
-                      category: event.target.value as
-                        | "in-an"
-                        | "thiet-ke"
-                        | "kinh-doanh",
-                    }))
-                  }
-                  className="rounded-lg border border-border bg-black px-3 py-2"
-                >
-                  <option value="in-an">In ấn</option>
-                  <option value="thiet-ke">Thiết kế</option>
-                  <option value="kinh-doanh">Kinh doanh</option>
-                </select>
-                <select
-                  value={courseEdit.level}
-                  onChange={(event) =>
-                    setCourseEdit((prev) => ({
-                      ...prev,
-                      level: event.target.value as "Cơ bản" | "Nâng cao",
-                    }))
-                  }
-                  className="rounded-lg border border-border bg-black px-3 py-2"
-                >
-                  <option value="Cơ bản">Cơ bản</option>
-                  <option value="Nâng cao">Nâng cao</option>
-                </select>
-                <input
-                  type="number"
-                  value={courseEdit.price}
-                  onChange={(event) =>
-                    setCourseEdit((prev) => ({
-                      ...prev,
-                      price: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="rounded-lg border border-border bg-black px-3 py-2"
-                />
-                <input
-                  value={courseEdit.thumbnail}
-                  onChange={(event) =>
-                    setCourseEdit((prev) => ({
-                      ...prev,
-                      thumbnail: event.target.value,
-                    }))
-                  }
-                  placeholder="URL ảnh khóa học"
-                  className="rounded-lg border border-border bg-black px-3 py-2 md:col-span-2"
-                />
+            <details open className="card p-4 md:p-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                <div>
+                  <h2 className="text-lg font-bold">Thông tin khóa học</h2>
+                  <p className="text-xs text-zinc-400">
+                    {selectedCourse.title}
+                  </p>
+                </div>
+                <span className="rounded-full border border-border px-3 py-1 text-xs text-zinc-300">
+                  {selectedCourse.slug}
+                </span>
+              </summary>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3 rounded-xl border border-border p-3">
+                  <p className="text-sm font-semibold">Thông tin chính</p>
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <input
+                      value={courseEdit.title}
+                      onChange={(event) =>
+                        setCourseEdit((prev) => ({
+                          ...prev,
+                          title: event.target.value,
+                        }))
+                      }
+                      className="rounded-lg border border-border bg-black px-3 py-2"
+                    />
+                    <select
+                      value={courseEdit.category}
+                      onChange={(event) =>
+                        setCourseEdit((prev) => ({
+                          ...prev,
+                          category: event.target.value as
+                            | "in-an"
+                            | "thiet-ke"
+                            | "kinh-doanh",
+                        }))
+                      }
+                      className="rounded-lg border border-border bg-black px-3 py-2"
+                    >
+                      <option value="in-an">In ấn</option>
+                      <option value="thiet-ke">Thiết kế</option>
+                      <option value="kinh-doanh">Kinh doanh</option>
+                    </select>
+                    <select
+                      value={courseEdit.level}
+                      onChange={(event) =>
+                        setCourseEdit((prev) => ({
+                          ...prev,
+                          level: event.target.value as "Cơ bản" | "Nâng cao",
+                        }))
+                      }
+                      className="rounded-lg border border-border bg-black px-3 py-2"
+                    >
+                      <option value="Cơ bản">Cơ bản</option>
+                      <option value="Nâng cao">Nâng cao</option>
+                    </select>
+                    <input
+                      type="number"
+                      value={courseEdit.price}
+                      onChange={(event) =>
+                        setCourseEdit((prev) => ({
+                          ...prev,
+                          price: Number(event.target.value) || 0,
+                        }))
+                      }
+                      className="rounded-lg border border-border bg-black px-3 py-2"
+                    />
+                    <input
+                      value={courseEdit.thumbnail}
+                      onChange={(event) =>
+                        setCourseEdit((prev) => ({
+                          ...prev,
+                          thumbnail: event.target.value,
+                        }))
+                      }
+                      placeholder="URL ảnh khóa học"
+                      className="rounded-lg border border-border bg-black px-3 py-2 md:col-span-2"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      className="btn-secondary px-3 py-2 text-xs"
+                      onClick={updateCourse}
+                      disabled={submitting}
+                    >
+                      Lưu section này
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-border p-3">
+                  <p className="text-sm font-semibold">Mô tả & media</p>
+                  <textarea
+                    value={courseEdit.shortDescription}
+                    onChange={(event) =>
+                      setCourseEdit((prev) => ({
+                        ...prev,
+                        shortDescription: event.target.value,
+                      }))
+                    }
+                    rows={2}
+                    className="w-full rounded-lg border border-border bg-black px-3 py-2"
+                  />
+                  <textarea
+                    value={courseEdit.detailedDescription}
+                    onChange={(event) =>
+                      setCourseEdit((prev) => ({
+                        ...prev,
+                        detailedDescription: event.target.value,
+                      }))
+                    }
+                    rows={3}
+                    className="w-full rounded-lg border border-border bg-black px-3 py-2"
+                  />
+                  <input
+                    value={courseEdit.introVideoUrl}
+                    onChange={(event) =>
+                      setCourseEdit((prev) => ({
+                        ...prev,
+                        introVideoUrl: event.target.value,
+                      }))
+                    }
+                    placeholder="URL video giới thiệu"
+                    className="w-full rounded-lg border border-border bg-black px-3 py-2"
+                  />
+
+                  <div className="flex justify-end">
+                    <button
+                      className="btn-secondary px-3 py-2 text-xs"
+                      onClick={updateCourse}
+                      disabled={submitting}
+                    >
+                      Lưu section này
+                    </button>
+                  </div>
+                </div>
               </div>
-              <textarea
-                value={courseEdit.shortDescription}
-                onChange={(event) =>
-                  setCourseEdit((prev) => ({
-                    ...prev,
-                    shortDescription: event.target.value,
-                  }))
-                }
-                rows={2}
-                className="w-full rounded-lg border border-border bg-black px-3 py-2"
-              />
-              <textarea
-                value={courseEdit.detailedDescription}
-                onChange={(event) =>
-                  setCourseEdit((prev) => ({
-                    ...prev,
-                    detailedDescription: event.target.value,
-                  }))
-                }
-                rows={3}
-                className="w-full rounded-lg border border-border bg-black px-3 py-2"
-              />
-              <input
-                value={courseEdit.introVideoUrl}
-                onChange={(event) =>
-                  setCourseEdit((prev) => ({
-                    ...prev,
-                    introVideoUrl: event.target.value,
-                  }))
-                }
-                placeholder="URL video giới thiệu"
-                className="w-full rounded-lg border border-border bg-black px-3 py-2"
-              />
-              <div className="grid gap-2 md:grid-cols-2">
+
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
                 <label className="rounded-lg border border-border px-3 py-2 text-sm text-zinc-300">
                   Upload ảnh khóa học
                   <input
@@ -965,14 +1191,7 @@ export default function AdminCourseModulePage() {
                   />
                 </label>
               </div>
-              <button
-                className="btn-secondary px-4 py-2 text-sm"
-                onClick={updateCourse}
-                disabled={submitting}
-              >
-                Lưu thông tin khóa học
-              </button>
-            </section>
+            </details>
           )}
 
           {selectedCourse && (

@@ -1,19 +1,53 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { CourseCard } from "@/components/course/course-card";
-import { COURSE_CATEGORIES, courses } from "@/lib/mock-data";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CourseCard,
+  type CourseCardData,
+} from "@/components/course/course-card";
+import { COURSE_CATEGORIES } from "@/lib/mock-data";
 
 type SortType = "new" | "hot" | "price";
+type PublicCourseItem = CourseCardData & {
+  category: "in-an" | "thiet-ke" | "kinh-doanh";
+  createdAt: string;
+};
 
 export default function CoursesPage() {
   const [category, setCategory] =
     useState<(typeof COURSE_CATEGORIES)[number]["value"]>("all");
   const [sortBy, setSortBy] = useState<SortType>("new");
+  const [courseItems, setCourseItems] = useState<PublicCourseItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const loadCourses = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await fetch("/api/courses", { cache: "no-store" });
+        const result = await response.json();
+
+        if (!response.ok) {
+          setError(result?.error ?? "Không tải được danh sách khóa học.");
+          return;
+        }
+
+        setCourseItems((result?.courses ?? []) as PublicCourseItem[]);
+      } catch {
+        setError("Không thể kết nối API khóa học.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCourses();
+  }, []);
 
   const filtered = useMemo(() => {
-    let list = courses.filter((course) =>
+    let list = courseItems.filter((course) =>
       category === "all" ? true : course.category === category,
     );
 
@@ -32,7 +66,7 @@ export default function CoursesPage() {
     }
 
     return list;
-  }, [category, sortBy]);
+  }, [courseItems, category, sortBy]);
 
   return (
     <div className="container-app space-y-6 py-6 md:py-10">
@@ -91,6 +125,21 @@ export default function CoursesPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
+        {loading && (
+          <p className="col-span-full text-sm text-zinc-400">
+            Đang tải khóa học...
+          </p>
+        )}
+        {!loading && error && (
+          <p className="col-span-full rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+            {error}
+          </p>
+        )}
+        {!loading && !error && filtered.length === 0 && (
+          <p className="col-span-full text-sm text-zinc-500">
+            Chưa có khóa học phù hợp với bộ lọc.
+          </p>
+        )}
         {filtered.map((course) => (
           <CourseCard key={course.slug} course={course} />
         ))}

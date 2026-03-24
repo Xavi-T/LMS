@@ -2,7 +2,18 @@ import Link from "next/link";
 import { Course } from "@/types/lms";
 import { formatCurrency } from "@/lib/utils";
 
-export function CourseCard({ course }: { course: Course }) {
+export type CourseCardData = Pick<
+  Course,
+  | "slug"
+  | "title"
+  | "shortDescription"
+  | "level"
+  | "studentsCount"
+  | "price"
+  | "thumbnail"
+>;
+
+export function CourseCard({ course }: { course: CourseCardData }) {
   return (
     <article className="card overflow-hidden">
       <div
