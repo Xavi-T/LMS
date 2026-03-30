@@ -159,3 +159,90 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json({ user: data, generatedPassword });
 }
+
+export async function DELETE(request: NextRequest) {
+  const unauthorized = ensureAdminRequest(request);
+  if (unauthorized) return unauthorized;
+
+  const supabase = getSupabaseServiceClient();
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "SUPABASE_SERVICE_ROLE_KEY chưa được cấu hình." },
+      { status: 500 },
+    );
+  }
+
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id")?.trim();
+  const emailRaw = searchParams.get("email")?.trim();
+  const email = emailRaw ? normalizeEmail(emailRaw) : null;
+
+  if (!id && !email) {
+    return NextResponse.json(
+      { error: "Cần cung cấp id hoặc email để xóa tài khoản." },
+      { status: 400 },
+    );
+  }
+
+  const accountQuery = supabase
+    .from("customer_accounts")
+    .select("id, email")
+    .limit(1);
+
+  const { data: account, error: accountError } = id
+    ? await accountQuery.eq("id", id).maybeSingle()
+    : await accountQuery.ilike("email", email as string).maybeSingle();
+
+  if (accountError) {
+    return NextResponse.json({ error: accountError.message }, { status: 500 });
+  }
+
+  if (!account) {
+    return NextResponse.json(
+      { error: "Không tìm thấy tài khoản học viên cần xóa." },
+      { status: 404 },
+    );
+  }
+
+  const { error, count } = await supabase
+    .from("customer_accounts")
+    .delete({ count: "exact" })
+    .eq("id", account.id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (!count) {
+    return NextResponse.json(
+      { error: "Không tìm thấy tài khoản học viên cần xóa." },
+      { status: 404 },
+    );
+  }
+
+  let closedRequestCount = 0;
+  let warning: string | undefined;
+  const accountEmail = normalizeEmail(account.email);
+
+  if (accountEmail) {
+    const { error: closeError, count: closeCount } = await supabase
+      .from("enrollment_requests")
+      .update({ status: "closed" }, { count: "exact" })
+      .ilike("email", accountEmail)
+      .in("status", ["new", "contacted", "paid"]);
+
+    if (closeError) {
+      warning =
+        "Đã xóa tài khoản nhưng không thể tự động đóng yêu cầu phê duyệt liên quan.";
+    } else {
+      closedRequestCount = closeCount ?? 0;
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    deletedCount: count,
+    closedRequestCount,
+    warning,
+  });
+}

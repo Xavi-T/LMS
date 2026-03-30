@@ -4,6 +4,14 @@ import { getCourseBySlug } from "@/lib/course";
 import { formatSupabaseError } from "@/lib/supabase/errors";
 import { supabaseEnv } from "@/lib/supabase/env";
 
+const parseCourseSlugs = (value: string | null | undefined) => {
+  if (!value) return [] as string[];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 const resolveVideoUrl = async (
   videoUrl: string | null,
   supabase: ReturnType<typeof getSupabaseServiceClient>,
@@ -28,7 +36,7 @@ const resolveVideoUrl = async (
 };
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params;
@@ -50,6 +58,52 @@ export async function GET(
         chapters: fallback.chapters,
       },
     });
+  }
+
+  const role = request.cookies.get("lms_role")?.value;
+  if (role === "student") {
+    const studentEmail = request.cookies
+      .get("lms_student_email")
+      ?.value?.trim()
+      .toLowerCase();
+
+    if (!studentEmail) {
+      return NextResponse.json(
+        { error: "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại." },
+        { status: 401 },
+      );
+    }
+
+    const { data: account, error: accountError } = await supabase
+      .from("customer_accounts")
+      .select("status, course_slug")
+      .ilike("email", studentEmail)
+      .maybeSingle();
+
+    if (accountError) {
+      return NextResponse.json(
+        { error: formatSupabaseError(accountError) },
+        { status: 500 },
+      );
+    }
+
+    if (!account || account.status !== "active") {
+      return NextResponse.json(
+        { error: "Tài khoản không khả dụng hoặc đã bị khóa." },
+        { status: 403 },
+      );
+    }
+
+    const ownedSlugs = parseCourseSlugs(account.course_slug);
+    if (!ownedSlugs.includes(slug)) {
+      return NextResponse.json(
+        {
+          error:
+            "Bạn không có quyền truy cập khóa học này. Chỉ truy cập được khóa học đã đăng ký/mua.",
+        },
+        { status: 403 },
+      );
+    }
   }
 
   const { data: course, error: courseError } = await supabase

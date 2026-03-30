@@ -12,17 +12,40 @@ const coupons = {
   PRINT200: { type: "fixed", value: 200000 },
 } as const;
 
+type CheckoutCourse = {
+  slug: string;
+  title: string;
+  shortDescription: string;
+  price: number;
+};
+
 export default function CheckoutClient({
   courseSlug,
+  course,
   packageName,
   packagePrice,
 }: {
   courseSlug: string;
+  course: CheckoutCourse | null;
   packageName?: string;
   packagePrice?: number;
 }) {
-  const course = getCourseBySlug(courseSlug);
-  const { user, purchaseCourse, markOrderPaid, orders } = useAppState();
+  const fallbackCourse = getCourseBySlug(courseSlug);
+  const selectedCourse = useMemo(
+    () =>
+      course ??
+      (fallbackCourse
+        ? {
+            slug: fallbackCourse.slug,
+            title: fallbackCourse.title,
+            shortDescription: fallbackCourse.shortDescription,
+            price: fallbackCourse.price,
+          }
+        : null),
+    [course, fallbackCourse],
+  );
+  const { user, purchaseCourse, markOrderPaid, orders, showToast } =
+    useAppState();
   const [couponInput, setCouponInput] = useState("");
   const [activeCoupon, setActiveCoupon] = useState<keyof typeof coupons | null>(
     null,
@@ -34,6 +57,8 @@ export default function CheckoutClient({
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [requestStatus, setRequestStatus] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [hasSubmittedApproval, setHasSubmittedApproval] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
 
   const validateBuyerInfo = () => {
@@ -62,17 +87,17 @@ export default function CheckoutClient({
   };
 
   const discount = useMemo(() => {
-    if (!course || !activeCoupon) return 0;
-    const basePrice = packagePrice ?? course.price;
+    if (!selectedCourse || !activeCoupon) return 0;
+    const basePrice = packagePrice ?? selectedCourse.price;
     const item = coupons[activeCoupon];
     if (item.type === "percent") {
       return Math.round((basePrice * item.value) / 100);
     }
 
     return item.value;
-  }, [activeCoupon, course, packagePrice]);
+  }, [activeCoupon, packagePrice, selectedCourse]);
 
-  if (!course) {
+  if (!selectedCourse) {
     return (
       <div className="container-app py-10 text-center">
         <p>Không tìm thấy khóa học trong giỏ hàng.</p>
@@ -83,9 +108,9 @@ export default function CheckoutClient({
     );
   }
 
-  const basePrice = packagePrice ?? course.price;
+  const basePrice = packagePrice ?? selectedCourse.price;
   const finalPrice = Math.max(0, basePrice - discount);
-  const transferNote = `SP-${course.slug.slice(0, 6).toUpperCase()}-${transferNoteSeed}`;
+  const transferNote = `SP-${selectedCourse.slug.slice(0, 6).toUpperCase()}-${transferNoteSeed}`;
   const activeOrder = orders.find((item) => item.id === activeOrderId);
 
   return (
@@ -102,12 +127,12 @@ export default function CheckoutClient({
 
         <article className="card p-4">
           <p className="text-sm text-zinc-400">Giỏ hàng</p>
-          <h2 className="mt-1 text-lg font-bold">{course.title}</h2>
+          <h2 className="mt-1 text-lg font-bold">{selectedCourse.title}</h2>
           {packageName && (
             <p className="text-xs text-accent">Gói đã chọn: {packageName}</p>
           )}
           <p className="mt-1 text-sm text-zinc-300">
-            {course.shortDescription}
+            {selectedCourse.shortDescription}
           </p>
           <p className="mt-3 text-xl font-black text-accent">
             {formatCurrency(basePrice)}
@@ -185,55 +210,80 @@ export default function CheckoutClient({
         </div>
         <button
           className="btn-primary w-full py-3 text-sm"
-          onClick={() => {
+          disabled={isCreatingOrder || Boolean(activeOrderId)}
+          onClick={async () => {
+            if (isCreatingOrder) {
+              return;
+            }
+
+            if (activeOrderId) {
+              const message =
+                "Đơn hàng đã được tạo. Vui lòng dùng nội dung chuyển khoản hiện tại để hoàn tất thanh toán.";
+              setCheckoutError(message);
+              showToast({ type: "info", message });
+              return;
+            }
+
             const validationError = validateBuyerInfo();
             if (validationError) {
               setCheckoutError(validationError);
               return;
             }
 
+            setIsCreatingOrder(true);
             setCheckoutError("");
             setRequestStatus("");
+            setHasSubmittedApproval(false);
             const orderId = purchaseCourse({
-              courseSlug: course.slug,
+              courseSlug: selectedCourse.slug,
               amount: finalPrice,
               couponCode: activeCoupon ?? undefined,
               transferNote,
             });
             setActiveOrderId(orderId);
 
-            fetch("/api/enrollments/request", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                fullName: fullName.trim(),
-                email: email.trim().toLowerCase(),
-                phone: phone.trim(),
-                packageName,
-                courseSlug: course.slug,
-                orderRef: orderId,
-                transferNote,
-              }),
-            })
-              .then(async (response) => {
-                const payload = await response.json();
-                if (!response.ok) {
-                  setRequestStatus(
-                    payload.error ??
-                      "Không ghi nhận được yêu cầu trên hệ thống.",
-                  );
-                  return;
-                }
-                setRequestStatus(
-                  "Đã ghi nhận yêu cầu mua khóa học trên hệ thống.",
-                );
-              })
-              .catch(() => {
-                setRequestStatus("Không thể kết nối API ghi nhận yêu cầu.");
+            try {
+              const response = await fetch("/api/enrollments/request", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  fullName: fullName.trim(),
+                  email: email.trim().toLowerCase(),
+                  phone: phone.trim(),
+                  packageName,
+                  courseSlug: selectedCourse.slug,
+                  orderRef: orderId,
+                  transferNote,
+                }),
               });
+
+              const payload = await response.json();
+              if (!response.ok) {
+                const message =
+                  payload.error ?? "Không ghi nhận được yêu cầu trên hệ thống.";
+                setRequestStatus(message);
+                showToast({ type: "error", message });
+                return;
+              }
+
+              const message =
+                "Đã tạo đơn hàng thành công. Vui lòng chuyển khoản.";
+              setRequestStatus(message);
+              showToast({ type: "success", message });
+            } catch {
+              const message = "Không thể kết nối API ghi nhận yêu cầu.";
+              setRequestStatus(message);
+              showToast({ type: "error", message });
+            } finally {
+              setIsCreatingOrder(false);
+            }
           }}
         >
-          Tạo đơn hàng
+          {isCreatingOrder
+            ? "Đang tạo đơn hàng..."
+            : activeOrderId
+              ? "Đơn hàng đã tạo"
+              : "Tạo đơn hàng"}
         </button>
 
         {checkoutError && (
@@ -264,7 +314,7 @@ export default function CheckoutClient({
             <button
               className="btn-secondary w-full py-2"
               onClick={async () => {
-                if (!activeOrderId || isProcessing) {
+                if (!activeOrderId || isProcessing || hasSubmittedApproval) {
                   return;
                 }
 
@@ -284,7 +334,7 @@ export default function CheckoutClient({
                   body: JSON.stringify({
                     orderId: activeOrderId,
                     transferNote,
-                    courseSlug: course.slug,
+                    courseSlug: selectedCourse.slug,
                     fullName: fullName.trim(),
                     email: email.trim().toLowerCase(),
                     phone: phone.trim(),
@@ -299,18 +349,33 @@ export default function CheckoutClient({
                   setRequestStatus(
                     payload.error ?? "Không ghi nhận được yêu cầu phê duyệt",
                   );
+                  showToast({
+                    type: "error",
+                    message:
+                      payload.error ?? "Không ghi nhận được yêu cầu phê duyệt",
+                  });
                   return;
                 }
 
-                setRequestStatus(
+                const message =
                   payload.message ??
-                    "Đã gửi yêu cầu, vui lòng chờ admin phê duyệt để nhận tài khoản qua email.",
-                );
+                  "Đã gửi yêu cầu, vui lòng chờ admin phê duyệt để nhận tài khoản qua email.";
+                setRequestStatus(message);
+                setHasSubmittedApproval(true);
+                setFullName("");
+                setEmail("");
+                setPhone("");
+                setCouponInput("");
+                setActiveCoupon(null);
+                showToast({ type: "success", message });
               }}
+              disabled={!activeOrderId || isProcessing || hasSubmittedApproval}
             >
-              {isProcessing
-                ? "Đang gửi yêu cầu phê duyệt..."
-                : "Tôi đã chuyển khoản (gửi admin duyệt)"}
+              {hasSubmittedApproval
+                ? "Đã gửi yêu cầu phê duyệt"
+                : isProcessing
+                  ? "Đang gửi yêu cầu phê duyệt..."
+                  : "Tôi đã chuyển khoản (gửi admin duyệt)"}
             </button>
             {activeOrder?.status === "paid" && (
               <p className="rounded-lg bg-green-500/20 p-2 text-center text-xs text-green-300">

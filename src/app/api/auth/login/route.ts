@@ -5,6 +5,14 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const defaultAdminEmail = "admin@sportprint.vn";
 const defaultAdminPassword = "Admin@123456";
 
+const parseCourseSlugs = (value: string | null | undefined) => {
+  if (!value) return [] as string[];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const emailRaw = body?.email as string | undefined;
@@ -54,6 +62,7 @@ export async function POST(request: NextRequest) {
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
     });
+    response.cookies.delete("lms_student_email");
 
     return response;
   }
@@ -68,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   const { data: account, error } = await supabase
     .from("customer_accounts")
-    .select("id, full_name, email, phone, plain_password, status")
+    .select("id, full_name, email, phone, plain_password, status, course_slug")
     .ilike("email", email)
     .maybeSingle();
 
@@ -90,6 +99,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const purchasedCourseSlugs = parseCourseSlugs(account.course_slug);
+
   const response = NextResponse.json({
     user: {
       id: account.id,
@@ -98,9 +109,17 @@ export async function POST(request: NextRequest) {
       phone: account.phone,
       role: "student",
     },
+    purchasedCourseSlugs,
   });
 
   response.cookies.set("lms_role", "student", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  });
+  response.cookies.set("lms_student_email", account.email, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

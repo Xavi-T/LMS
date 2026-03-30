@@ -28,6 +28,12 @@ interface IssuedCredential {
   issuedAt: string;
 }
 
+export interface AppToast {
+  id: string;
+  type: "success" | "error" | "info";
+  message: string;
+}
+
 interface PersistedAppState {
   user: AppUser | null;
   purchasedCourseSlugs: string[];
@@ -46,9 +52,15 @@ interface AppState {
   videoPositions: Record<string, number>;
   downloads: DownloadItem[];
   issuedCredentials: IssuedCredential[];
+  toasts: AppToast[];
   loginAs: (
     role: UserRole,
-    payload: { name: string; email?: string; phone?: string },
+    payload: {
+      name: string;
+      email?: string;
+      phone?: string;
+      purchasedCourseSlugs?: string[];
+    },
   ) => void;
   loginWithCredential: (payload: {
     email: string;
@@ -74,6 +86,12 @@ interface AppState {
     password: string;
     courseSlug: string;
   }) => void;
+  showToast: (payload: {
+    type?: "success" | "error" | "info";
+    message: string;
+    durationMs?: number;
+  }) => void;
+  dismissToast: (toastId: string) => void;
 }
 
 const STORAGE_KEY = "sportprint-lms-app-state";
@@ -120,10 +138,17 @@ const AppContext = createContext<AppState | undefined>(undefined);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<PersistedAppState>(() => emptyState());
   const [isHydrated, setIsHydrated] = useState(false);
+  const [toasts, setToasts] = useState<AppToast[]>([]);
 
   useEffect(() => {
-    setState(getInitialState());
-    setIsHydrated(true);
+    const rafId = window.requestAnimationFrame(() => {
+      setState(getInitialState());
+      setIsHydrated(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
   }, []);
 
   useEffect(() => {
@@ -136,7 +161,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loginAs = useCallback(
     (
       role: UserRole,
-      payload: { name: string; email?: string; phone?: string },
+      payload: {
+        name: string;
+        email?: string;
+        phone?: string;
+        purchasedCourseSlugs?: string[];
+      },
     ) => {
       setState((prev) => ({
         ...prev,
@@ -147,6 +177,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           email: payload.email,
           phone: payload.phone,
         },
+        purchasedCourseSlugs:
+          role === "student"
+            ? (payload.purchasedCourseSlugs ?? [])
+            : prev.purchasedCourseSlugs,
       }));
     },
     [],
@@ -304,6 +338,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const dismissToast = useCallback((toastId: string) => {
+    setToasts((prev) => prev.filter((item) => item.id !== toastId));
+  }, []);
+
+  const showToast = useCallback(
+    (payload: {
+      type?: "success" | "error" | "info";
+      message: string;
+      durationMs?: number;
+    }) => {
+      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const type = payload.type ?? "info";
+      const duration = payload.durationMs ?? 3500;
+
+      setToasts((prev) => [...prev, { id, type, message: payload.message }]);
+
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((item) => item.id !== id));
+      }, duration);
+    },
+    [],
+  );
+
   const value = useMemo(
     () => ({
       user: state.user,
@@ -313,6 +370,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       videoPositions: state.videoPositions,
       downloads: state.downloads,
       issuedCredentials: state.issuedCredentials,
+      toasts,
       loginAs,
       loginWithCredential,
       logout,
@@ -322,8 +380,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveVideoPosition,
       markDownloaded,
       saveIssuedCredential,
+      showToast,
+      dismissToast,
     }),
     [
+      dismissToast,
       loginAs,
       loginWithCredential,
       logout,
@@ -334,6 +395,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       saveIssuedCredential,
       saveVideoPosition,
       state,
+      showToast,
+      toasts,
     ],
   );
 

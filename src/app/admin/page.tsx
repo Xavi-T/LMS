@@ -51,7 +51,7 @@ type LeadItem = {
 type AdminTab = "overview" | "approvals" | "users" | "orders";
 
 export default function AdminPage() {
-  const { user, orders, purchasedCourseSlugs } = useAppState();
+  const { user, orders, purchasedCourseSlugs, showToast } = useAppState();
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [coursesData, setCoursesData] = useState<AdminCourse[]>([]);
@@ -78,6 +78,7 @@ export default function AdminPage() {
   const [isSubmittingCourse, setIsSubmittingCourse] = useState(false);
   const [isSubmittingResource, setIsSubmittingResource] = useState(false);
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+  const [actionNotice, setActionNotice] = useState("");
 
   const [generatedPassword, setGeneratedPassword] = useState("");
   const [approvedCredential, setApprovedCredential] = useState<{
@@ -309,6 +310,36 @@ export default function AdminPage() {
     loadLeads();
   }, [user?.role]);
 
+  useEffect(() => {
+    if (userError) {
+      showToast({ type: "error", message: userError });
+    }
+  }, [showToast, userError]);
+
+  useEffect(() => {
+    if (courseError) {
+      showToast({ type: "error", message: courseError });
+    }
+  }, [courseError, showToast]);
+
+  useEffect(() => {
+    if (resourceError) {
+      showToast({ type: "error", message: resourceError });
+    }
+  }, [resourceError, showToast]);
+
+  useEffect(() => {
+    if (approvalError) {
+      showToast({ type: "error", message: approvalError });
+    }
+  }, [approvalError, showToast]);
+
+  useEffect(() => {
+    if (!actionNotice) return;
+    showToast({ type: "success", message: actionNotice });
+    setActionNotice("");
+  }, [actionNotice, showToast]);
+
   const createUser = async () => {
     setIsSubmittingUser(true);
     setUserError("");
@@ -328,6 +359,11 @@ export default function AdminPage() {
       }
 
       setGeneratedPassword(result?.generatedPassword ?? "");
+      setActionNotice(
+        result?.generatedPassword
+          ? "Tạo user thành công và đã cấp mật khẩu mới."
+          : "Tạo/Cập nhật user thành công.",
+      );
       setNewUser((prev) => ({
         ...prev,
         fullName: "",
@@ -370,6 +406,7 @@ export default function AdminPage() {
       }
 
       await loadCourses();
+      setActionNotice("Đã lưu cập nhật khóa học.");
     } catch {
       setCourseError("Không thể kết nối API khóa học.");
     } finally {
@@ -400,6 +437,7 @@ export default function AdminPage() {
         storagePath: "",
       }));
       await loadResources();
+      setActionNotice("Đã tạo tài liệu mới.");
     } catch {
       setResourceError("Không thể kết nối API tài liệu.");
     } finally {
@@ -433,6 +471,7 @@ export default function AdminPage() {
       }
 
       await loadResources();
+      setActionNotice("Đã lưu thay đổi tài liệu.");
     } catch {
       setResourceError("Không thể kết nối API tài liệu.");
     } finally {
@@ -453,6 +492,7 @@ export default function AdminPage() {
         return;
       }
       await loadResources();
+      setActionNotice("Đã xóa tài liệu.");
     } catch {
       setResourceError("Không thể kết nối API tài liệu.");
     } finally {
@@ -478,6 +518,7 @@ export default function AdminPage() {
         return;
       }
       await loadLeads();
+      setActionNotice("Đã cập nhật trạng thái yêu cầu.");
     } catch {
       setApprovalError("Không thể kết nối API phê duyệt.");
     } finally {
@@ -503,12 +544,60 @@ export default function AdminPage() {
 
       if (result?.credential) {
         setApprovedCredential(result.credential);
+        setActionNotice("Đã phê duyệt và cấp tài khoản học viên.");
       }
+
+      if (result?.emailStatus === "failed") {
+        showToast({
+          type: "error",
+          message:
+            result?.emailError ||
+            "Đã cấp tài khoản nhưng gửi email cho học viên thất bại.",
+        });
+      }
+
       await Promise.all([loadLeads(), loadUsers()]);
     } catch {
       setApprovalError("Không thể kết nối API xử lý yêu cầu.");
     } finally {
       setIsSubmittingApproval(false);
+    }
+  };
+
+  const deleteUserAccount = async (targetUser: AdminUser) => {
+    setIsSubmittingUser(true);
+    setUserError("");
+    setGeneratedPassword("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/users?id=${encodeURIComponent(targetUser.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        setUserError(result?.error ?? "Không xóa được tài khoản học viên.");
+        return;
+      }
+
+      if (result?.warning) {
+        showToast({ type: "error", message: result.warning });
+      }
+
+      const closedRequestCount = Number(result?.closedRequestCount ?? 0);
+      setActionNotice(
+        closedRequestCount > 0
+          ? `Đã xóa tài khoản học viên và đóng ${closedRequestCount} yêu cầu liên quan.`
+          : "Đã xóa tài khoản học viên.",
+      );
+      await Promise.all([loadUsers(), loadLeads()]);
+    } catch {
+      setUserError("Không thể kết nối API xóa tài khoản.");
+    } finally {
+      setIsSubmittingUser(false);
     }
   };
 
@@ -536,6 +625,9 @@ export default function AdminPage() {
 
       if (result?.generatedPassword) {
         setGeneratedPassword(result.generatedPassword);
+        setActionNotice("Đã reset mật khẩu user.");
+      } else {
+        setActionNotice("Đã cập nhật trạng thái user.");
       }
       await loadUsers();
     } catch {
@@ -802,6 +894,13 @@ export default function AdminPage() {
                     >
                       Reset mật khẩu
                     </button>
+                    <button
+                      className="btn-secondary px-3 py-2 text-xs"
+                      disabled={isSubmittingUser}
+                      onClick={() => deleteUserAccount(item)}
+                    >
+                      Xóa tài khoản
+                    </button>
                   </div>
                 </div>
               </article>
@@ -915,27 +1014,31 @@ export default function AdminPage() {
                 </p>
 
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    className="btn-secondary px-3 py-2 text-xs"
-                    disabled={isSubmittingApproval}
-                    onClick={() => updateLeadStatus(lead.id, "contacted")}
-                  >
-                    Đánh dấu đã liên hệ
-                  </button>
-                  <button
-                    className="btn-secondary px-3 py-2 text-xs"
-                    disabled={isSubmittingApproval}
-                    onClick={() => updateLeadStatus(lead.id, "closed")}
-                  >
-                    Từ chối yêu cầu
-                  </button>
-                  <button
-                    className="btn-primary px-3 py-2 text-xs"
-                    disabled={isSubmittingApproval || lead.status === "paid"}
-                    onClick={() => approveLead(lead.id)}
-                  >
-                    Phê duyệt cấp tài khoản
-                  </button>
+                  {lead.status !== "paid" ? (
+                    <>
+                      <button
+                        className="btn-secondary px-3 py-2 text-xs"
+                        disabled={isSubmittingApproval}
+                        onClick={() => updateLeadStatus(lead.id, "contacted")}
+                      >
+                        Đánh dấu đã liên hệ
+                      </button>
+                      <button
+                        className="btn-secondary px-3 py-2 text-xs"
+                        disabled={isSubmittingApproval}
+                        onClick={() => updateLeadStatus(lead.id, "closed")}
+                      >
+                        Từ chối yêu cầu
+                      </button>
+                      <button
+                        className="btn-primary px-3 py-2 text-xs"
+                        disabled={isSubmittingApproval}
+                        onClick={() => approveLead(lead.id)}
+                      >
+                        Phê duyệt cấp tài khoản
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </article>
             ))}

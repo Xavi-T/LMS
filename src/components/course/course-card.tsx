@@ -14,11 +14,17 @@ export type CourseCardData = Pick<
 >;
 
 export function CourseCard({ course }: { course: CourseCardData }) {
+  const hasThumbnail = Boolean(course.thumbnail?.trim());
+
   return (
     <article className="card overflow-hidden">
       <div
-        className="h-44 bg-cover bg-center"
-        style={{ backgroundImage: `url(${course.thumbnail})` }}
+        className={`h-44 bg-center ${hasThumbnail ? "bg-cover" : "bg-gradient-to-br from-zinc-800 to-zinc-900"}`}
+        style={
+          hasThumbnail
+            ? { backgroundImage: `url(${course.thumbnail})` }
+            : undefined
+        }
       />
       <div className="space-y-3 p-4">
         <div className="flex items-center justify-between text-xs text-zinc-400">

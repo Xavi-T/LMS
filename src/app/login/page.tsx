@@ -51,6 +51,9 @@ export default function LoginPage() {
         name: result?.user?.name ?? email.split("@")[0] ?? "Học viên",
         email: result?.user?.email ?? email,
         phone: result?.user?.phone,
+        purchasedCourseSlugs: Array.isArray(result?.purchasedCourseSlugs)
+          ? result.purchasedCourseSlugs
+          : [],
       });
 
       router.push("/dashboard");

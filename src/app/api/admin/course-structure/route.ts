@@ -11,6 +11,17 @@ const parseBody = async (request: NextRequest) => {
   }
 };
 
+const hasMissingLessonIdColumn = (
+  error: {
+    code?: string;
+    message?: string;
+  } | null,
+) => {
+  if (!error) return false;
+  if (error.code === "42703") return true;
+  return (error.message ?? "").toLowerCase().includes("lesson_id");
+};
+
 export async function GET(request: NextRequest) {
   const unauthorized = ensureAdminRequest(request);
   if (unauthorized) return unauthorized;
@@ -70,10 +81,57 @@ export async function GET(request: NextRequest) {
     lessonMap.set(lesson.chapter_id, [...existing, lesson]);
   }
 
+  const lessonIds = (lessons ?? []).map((lesson) => lesson.id);
+  let lessonResources: Array<{
+    id: string;
+    course_id: string;
+    lesson_id: string | null;
+    title: string;
+    description: string | null;
+    file_type: string;
+    preview_image: string | null;
+    storage_path: string;
+  }> = [];
+
+  if (lessonIds.length > 0) {
+    const { data: resourceRows, error: resourceError } = await supabase
+      .from("course_resources")
+      .select(
+        "id, course_id, lesson_id, title, description, file_type, preview_image, storage_path",
+      )
+      .in("lesson_id", lessonIds)
+      .order("title", { ascending: true });
+
+    if (resourceError) {
+      if (hasMissingLessonIdColumn(resourceError)) {
+        lessonResources = [];
+      } else {
+        return NextResponse.json(
+          { error: formatSupabaseError(resourceError) },
+          { status: 500 },
+        );
+      }
+    }
+
+    if (!hasMissingLessonIdColumn(resourceError)) {
+      lessonResources = resourceRows ?? [];
+    }
+  }
+
+  const lessonResourceMap = new Map<string, typeof lessonResources>();
+  for (const resource of lessonResources) {
+    if (!resource.lesson_id) continue;
+    const existing = lessonResourceMap.get(resource.lesson_id) ?? [];
+    lessonResourceMap.set(resource.lesson_id, [...existing, resource]);
+  }
+
   return NextResponse.json({
     chapters: (chapters ?? []).map((chapter) => ({
       ...chapter,
-      lessons: lessonMap.get(chapter.id) ?? [],
+      lessons: (lessonMap.get(chapter.id) ?? []).map((lesson) => ({
+        ...lesson,
+        resources: lessonResourceMap.get(lesson.id) ?? [],
+      })),
     })),
   });
 }
@@ -137,25 +195,14 @@ export async function POST(request: NextRequest) {
   if (entity === "lesson") {
     const chapterId = body?.chapterId as string | undefined;
     const title = body?.title as string | undefined;
-    const type = body?.type as "video" | "text" | undefined;
-    const duration = body?.duration as string | undefined;
     const summary = body?.summary as string | undefined;
-    const content = body?.content as string | undefined;
     const videoUrl = body?.videoUrl as string | undefined;
 
-    if (!chapterId || !title || !type || !duration || !summary) {
+    if (!chapterId || !title) {
       return NextResponse.json(
         {
-          error:
-            "chapterId, title, type, duration, summary là bắt buộc để tạo bài học.",
+          error: "chapterId và title là bắt buộc để tạo bài học.",
         },
-        { status: 400 },
-      );
-    }
-
-    if (type !== "video" && type !== "text") {
-      return NextResponse.json(
-        { error: "type không hợp lệ." },
         { status: 400 },
       );
     }
@@ -175,11 +222,11 @@ export async function POST(request: NextRequest) {
       .insert({
         chapter_id: chapterId,
         title: title.trim(),
-        type,
-        duration: duration.trim(),
-        summary: summary.trim(),
-        content: content?.trim() || null,
-        video_url: type === "video" ? videoUrl?.trim() || null : null,
+        type: "video",
+        duration: "Đang cập nhật",
+        summary: summary?.trim() || "Đang cập nhật mô tả bài học.",
+        content: null,
+        video_url: videoUrl?.trim() || null,
         position: nextPosition,
       })
       .select(
@@ -313,4 +360,43 @@ export async function PATCH(request: NextRequest) {
     { error: "entity phải là chapter hoặc lesson." },
     { status: 400 },
   );
+}
+
+export async function DELETE(request: NextRequest) {
+  const unauthorized = ensureAdminRequest(request);
+  if (unauthorized) return unauthorized;
+
+  const entity = request.nextUrl.searchParams.get("entity");
+  const id = request.nextUrl.searchParams.get("id");
+
+  if (!id) {
+    return NextResponse.json({ error: "id là bắt buộc." }, { status: 400 });
+  }
+
+  if (entity !== "chapter" && entity !== "lesson") {
+    return NextResponse.json(
+      { error: "entity phải là chapter hoặc lesson." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseServiceClient();
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "SUPABASE_SERVICE_ROLE_KEY chưa được cấu hình." },
+      { status: 500 },
+    );
+  }
+
+  const tableName = entity === "chapter" ? "chapters" : "lessons";
+  const { error } = await supabase.from(tableName).delete().eq("id", id);
+
+  if (error) {
+    return NextResponse.json(
+      { error: formatSupabaseError(error) },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

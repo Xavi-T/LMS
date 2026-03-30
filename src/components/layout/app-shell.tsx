@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { AppToasts } from "@/components/common/app-toasts";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,6 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {children}
       </main>
+      <AppToasts />
       {!isLearning && <SiteFooter />}
     </>
   );

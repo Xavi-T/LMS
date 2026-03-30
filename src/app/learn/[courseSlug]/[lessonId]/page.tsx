@@ -35,9 +35,10 @@ export default function LearningPage({
   params: { courseSlug: string; lessonId: string };
 }) {
   const { courseSlug, lessonId } = params;
-  const { markLessonComplete, learningProgress, purchasedCourseSlugs } =
+  const { user, markLessonComplete, learningProgress, purchasedCourseSlugs } =
     useAppState();
   const [remoteCourse, setRemoteCourse] = useState<LearningCourse | null>(null);
+  const [curriculumForbidden, setCurriculumForbidden] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -47,12 +48,21 @@ export default function LearningPage({
         const response = await fetch(`/api/curriculum/${courseSlug}`, {
           cache: "no-store",
         });
+
+        if (response.status === 403) {
+          if (active) {
+            setCurriculumForbidden(true);
+          }
+          return;
+        }
+
         const result = await response.json();
         if (!response.ok || !result?.course) {
           return;
         }
 
         if (active) {
+          setCurriculumForbidden(false);
           setRemoteCourse(result.course as LearningCourse);
         }
       } catch {}
@@ -65,16 +75,23 @@ export default function LearningPage({
     };
   }, [courseSlug]);
 
-  const fallbackCourse = getCourseBySlug(courseSlug);
-  const course =
-    remoteCourse ??
-    (fallbackCourse
-      ? {
-          slug: fallbackCourse.slug,
-          title: fallbackCourse.title,
-          chapters: fallbackCourse.chapters,
-        }
-      : null);
+  const fallbackCourse = useMemo(
+    () => (user?.role === "student" ? null : getCourseBySlug(courseSlug)),
+    [courseSlug, user?.role],
+  );
+
+  const course = useMemo(
+    () =>
+      remoteCourse ??
+      (fallbackCourse
+        ? {
+            slug: fallbackCourse.slug,
+            title: fallbackCourse.title,
+            chapters: fallbackCourse.chapters,
+          }
+        : null),
+    [fallbackCourse, remoteCourse],
+  );
 
   const lessons = useMemo(() => {
     if (!course) {
@@ -90,6 +107,18 @@ export default function LearningPage({
   }, [course]);
 
   const lesson = lessons.find((item) => item.id === lessonId);
+
+  if (curriculumForbidden) {
+    return (
+      <div className="container-app py-10 text-center text-sm">
+        Bạn không có quyền truy cập khóa học này. Chỉ truy cập được khóa học đã
+        đăng ký/mua.{" "}
+        <Link href="/dashboard" className="text-accent">
+          Về dashboard
+        </Link>
+      </div>
+    );
+  }
 
   if (!course || !lesson) {
     return (
@@ -109,6 +138,10 @@ export default function LearningPage({
 
   const completed = learningProgress[courseSlug]?.length ?? 0;
   const hasPurchased = purchasedCourseSlugs.includes(courseSlug);
+  const canViewLessonContent =
+    user?.role === "admin" ||
+    user?.role === "instructor" ||
+    (user?.role === "student" && hasPurchased);
 
   return (
     <div className="grid min-h-screen md:grid-cols-[300px_1fr]">
@@ -155,10 +188,10 @@ export default function LearningPage({
       </aside>
 
       <section className="space-y-4 p-4 md:p-6">
-        {!hasPurchased && (
+        {!canViewLessonContent && (
           <div className="rounded-xl border border-accent/40 bg-accent/10 p-3 text-xs text-orange-200">
-            Bạn đang ở chế độ học thử. Mua khóa học để mở kho tài liệu và đầy đủ
-            quyền học tập.
+            Bạn đang ở chế độ xem trước. Chỉ xem được danh sách chương/bài học;
+            video bài giảng và tài liệu sẽ mở sau khi mua khóa học.
           </div>
         )}
 
@@ -170,9 +203,15 @@ export default function LearningPage({
           <p className="text-sm text-zinc-300">{lesson.summary}</p>
         </div>
 
-        <VideoPlayer lessonId={lesson.id} src={lesson.videoUrl} />
+        {canViewLessonContent ? (
+          <VideoPlayer lessonId={lesson.id} src={lesson.videoUrl} />
+        ) : (
+          <div className="flex h-60 items-center justify-center rounded-2xl border border-dashed border-border bg-black/20 p-4 text-center text-sm text-zinc-400 md:h-96">
+            Nội dung video đã khóa. Vui lòng mua khóa học để tiếp tục.
+          </div>
+        )}
 
-        {lesson.type === "text" && lesson.content && (
+        {canViewLessonContent && lesson.type === "text" && lesson.content && (
           <article className="card p-4 text-sm leading-7 text-zinc-200">
             {lesson.content}
           </article>
@@ -181,6 +220,7 @@ export default function LearningPage({
         <div className="flex flex-wrap gap-2">
           <button
             className="btn-primary px-4 py-2 text-sm"
+            disabled={!canViewLessonContent}
             onClick={() => markLessonComplete(courseSlug, lesson.id)}
           >
             Hoàn thành bài học

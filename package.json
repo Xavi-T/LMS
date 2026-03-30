@@ -10,7 +10,9 @@
     "seed:supabase": "tsx scripts/seed-supabase.ts"
   },
   "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.12",
     "@supabase/supabase-js": "^2.99.2",
+    "@uiw/react-md-editor": "^4.0.11",
     "clsx": "^2.1.1",
     "lucide-react": "^0.577.0",
     "next": "16.1.6",

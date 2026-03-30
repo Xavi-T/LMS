@@ -46,9 +46,10 @@ create table if not exists public.lessons (
 create table if not exists public.course_resources (
   id uuid primary key default gen_random_uuid(),
   course_id uuid not null references public.courses(id) on delete cascade,
+  lesson_id uuid references public.lessons(id) on delete cascade,
   title text not null,
   description text,
-  file_type text not null check (file_type in ('.CDR','.AI','.PSD')),
+  file_type text not null check (file_type ~ '^\.[A-Z0-9]{1,12}$'),
   preview_image text,
   storage_path text not null
 );
