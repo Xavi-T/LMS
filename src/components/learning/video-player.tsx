@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { useAppState } from "@/contexts/app-context";
 
@@ -15,18 +15,7 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    const player = videoRef.current;
-    if (!player || !src) {
-      return;
-    }
-
-    const saved = videoPositions[lessonId];
-    if (saved && saved > 0 && saved < player.duration) {
-      player.currentTime = saved;
-    }
-  }, [lessonId, src, videoPositions]);
+  const [videoAspectRatio, setVideoAspectRatio] = useState(16 / 9);
 
   if (!src) {
     return (
@@ -37,17 +26,40 @@ export function VideoPlayer({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="mx-auto w-full max-w-4xl space-y-3">
       <div
-        className="overflow-hidden rounded-2xl border border-border"
+        className="overflow-hidden rounded-2xl border border-border bg-black"
+        style={{ aspectRatio: `${videoAspectRatio}` }}
         onContextMenu={(e) => e.preventDefault()}
       >
         <video
           ref={videoRef}
           src={src}
-          className="h-60 w-full bg-black object-cover md:h-[460px]"
+          className="h-full w-full bg-black object-contain"
           controls={false}
           controlsList="nodownload noplaybackrate"
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={(event) => {
+            const player = event.currentTarget;
+            setIsPlaying(false);
+            setProgress(0);
+            setVideoAspectRatio(16 / 9);
+
+            if (player.videoWidth > 0 && player.videoHeight > 0) {
+              setVideoAspectRatio(player.videoWidth / player.videoHeight);
+            }
+
+            const saved = videoPositions[lessonId];
+            if (
+              typeof saved === "number" &&
+              saved > 0 &&
+              Number.isFinite(player.duration) &&
+              saved < player.duration
+            ) {
+              player.currentTime = saved;
+            }
+          }}
           onTimeUpdate={(event) => {
             const current = event.currentTarget.currentTime;
             const duration = event.currentTarget.duration || 1;

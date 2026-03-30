@@ -74,9 +74,8 @@ export default function AdminLessonDetailPage() {
     if (uploadingVideo) return "Đang upload video, vui lòng chờ.";
     if (uploadingResource) return "Đang upload tài liệu, vui lòng chờ.";
     if (!title.trim()) return "Vui lòng nhập tên bài học.";
-    if (!summary.trim()) return "Vui lòng nhập mô tả bài học.";
     return "";
-  }, [savingLesson, summary, title, uploadingResource, uploadingVideo]);
+  }, [savingLesson, title, uploadingResource, uploadingVideo]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -242,14 +241,6 @@ export default function AdminLessonDetailPage() {
               placeholder="Tên bài học"
             />
 
-            <textarea
-              value={summary}
-              onChange={(event) => setSummary(event.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-border bg-black px-3 py-2"
-              placeholder="Mô tả bài học"
-            />
-
             <div
               className="rounded-lg border border-border p-2"
               data-color-mode="dark"
@@ -348,7 +339,8 @@ export default function AdminLessonDetailPage() {
                     try {
                       await updateLesson(lessonId, {
                         title,
-                        summary,
+                        summary:
+                          summary?.trim() || "Đang cập nhật mô tả bài học.",
                         content,
                         type: "video",
                         duration: "Đang cập nhật",

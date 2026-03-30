@@ -200,7 +200,7 @@ export default function CheckoutClient({
           </p>
         )}
         <div className="space-y-1 text-sm text-zinc-300">
-          <p>Tạm tính: {formatCurrency(course.price)}</p>
+          <p>Tạm tính: {formatCurrency(selectedCourse.price)}</p>
           <p>Gói chọn: {packageName ?? "Khóa mặc định"}</p>
           <p>Giá gói: {formatCurrency(basePrice)}</p>
           <p>Giảm giá: -{formatCurrency(discount)}</p>

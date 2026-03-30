@@ -8,8 +8,35 @@ const parseCourseSlugs = (value: string | null | undefined) => {
   if (!value) return [] as string[];
   return value
     .split(",")
-    .map((item) => item.trim())
+    .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
+};
+
+const normalizeStoragePath = (value: string) => {
+  const normalized = value.trim();
+  const bucketPrefix = `${supabaseEnv.bucketName}/`;
+  if (normalized.startsWith(bucketPrefix)) {
+    return normalized.slice(bucketPrefix.length);
+  }
+  return normalized;
+};
+
+const extractStoragePathFromSupabaseUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    const signPrefix = `/storage/v1/object/sign/${supabaseEnv.bucketName}/`;
+    const publicPrefix = `/storage/v1/object/public/${supabaseEnv.bucketName}/`;
+
+    if (parsed.pathname.startsWith(signPrefix)) {
+      return decodeURIComponent(parsed.pathname.slice(signPrefix.length));
+    }
+
+    if (parsed.pathname.startsWith(publicPrefix)) {
+      return decodeURIComponent(parsed.pathname.slice(publicPrefix.length));
+    }
+  } catch {}
+
+  return null;
 };
 
 const resolveVideoUrl = async (
@@ -20,19 +47,95 @@ const resolveVideoUrl = async (
     return undefined;
   }
 
+  if (!supabase) {
+    return undefined;
+  }
+
   if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
-    return videoUrl;
+    const extractedPath = extractStoragePathFromSupabaseUrl(videoUrl);
+    if (!extractedPath) {
+      return videoUrl;
+    }
+
+    const { data } = await supabase.storage
+      .from(supabaseEnv.bucketName)
+      .createSignedUrl(normalizeStoragePath(extractedPath), 60 * 60);
+
+    return data?.signedUrl ?? videoUrl;
+  }
+
+  const { data } = await supabase.storage
+    .from(supabaseEnv.bucketName)
+    .createSignedUrl(normalizeStoragePath(videoUrl), 60 * 60);
+
+  return data?.signedUrl;
+};
+
+const resolveResourceUrl = async (
+  storagePath: string | null,
+  supabase: ReturnType<typeof getSupabaseServiceClient>,
+) => {
+  if (!storagePath) {
+    return undefined;
   }
 
   if (!supabase) {
     return undefined;
   }
 
+  if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
+    const extractedPath = extractStoragePathFromSupabaseUrl(storagePath);
+    if (!extractedPath) {
+      return storagePath;
+    }
+
+    const { data } = await supabase.storage
+      .from(supabaseEnv.bucketName)
+      .createSignedUrl(normalizeStoragePath(extractedPath), 60 * 60);
+
+    return data?.signedUrl ?? storagePath;
+  }
+
   const { data } = await supabase.storage
     .from(supabaseEnv.bucketName)
-    .createSignedUrl(videoUrl, 60 * 60);
+    .createSignedUrl(normalizeStoragePath(storagePath), 60 * 60);
 
   return data?.signedUrl;
+};
+
+const resolveContentMediaUrls = async (
+  content: string | null,
+  supabase: ReturnType<typeof getSupabaseServiceClient>,
+) => {
+  if (!content) {
+    return undefined;
+  }
+
+  const srcRegex = /src\s*=\s*"([^"]+)"/gi;
+  const matches = Array.from(content.matchAll(srcRegex));
+
+  if (matches.length === 0) {
+    return content;
+  }
+
+  let nextContent = content;
+
+  for (const match of matches) {
+    const rawUrl = match[1];
+    if (!rawUrl) continue;
+
+    const refreshedUrl = await resolveResourceUrl(rawUrl, supabase);
+    if (!refreshedUrl || refreshedUrl === rawUrl) {
+      continue;
+    }
+
+    nextContent = nextContent.replace(
+      `src="${rawUrl}"`,
+      `src="${refreshedUrl}"`,
+    );
+  }
+
+  return nextContent;
 };
 
 export async function GET(
@@ -40,6 +143,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params;
+  const normalizedSlug = slug.trim().toLowerCase();
 
   const supabase = getSupabaseServiceClient();
   if (!supabase) {
@@ -95,7 +199,7 @@ export async function GET(
     }
 
     const ownedSlugs = parseCourseSlugs(account.course_slug);
-    if (!ownedSlugs.includes(slug)) {
+    if (!ownedSlugs.includes(normalizedSlug)) {
       return NextResponse.json(
         {
           error:
@@ -109,7 +213,7 @@ export async function GET(
   const { data: course, error: courseError } = await supabase
     .from("courses")
     .select("id, slug, title")
-    .eq("slug", slug)
+    .eq("slug", normalizedSlug)
     .maybeSingle();
 
   if (courseError) {
@@ -120,7 +224,7 @@ export async function GET(
   }
 
   if (!course) {
-    const fallback = getCourseBySlug(slug);
+    const fallback = getCourseBySlug(normalizedSlug);
     if (!fallback) {
       return NextResponse.json(
         { error: "Không tìm thấy khóa học." },
@@ -182,6 +286,33 @@ export async function GET(
     lessons = lessonRows ?? [];
   }
 
+  const lessonIds = lessons.map((item) => item.id);
+  let resources: Array<{
+    id: string;
+    lesson_id: string | null;
+    title: string;
+    description: string | null;
+    file_type: string;
+    storage_path: string;
+  }> = [];
+
+  if (lessonIds.length > 0) {
+    const { data: resourceRows, error: resourceError } = await supabase
+      .from("course_resources")
+      .select("id, lesson_id, title, description, file_type, storage_path")
+      .in("lesson_id", lessonIds)
+      .order("title", { ascending: true });
+
+    if (resourceError) {
+      return NextResponse.json(
+        { error: formatSupabaseError(resourceError) },
+        { status: 500 },
+      );
+    }
+
+    resources = resourceRows ?? [];
+  }
+
   const responseChapters = [] as Array<{
     id: string;
     title: string;
@@ -209,17 +340,40 @@ export async function GET(
       summary: string;
       content?: string;
       videoUrl?: string;
+      resources: Array<{
+        id: string;
+        title: string;
+        description?: string;
+        fileType: string;
+        signedUrl?: string;
+      }>;
     }>;
 
     for (const lesson of chapterLessons) {
+      const lessonResources = resources.filter(
+        (resource) => resource.lesson_id === lesson.id,
+      );
+
       normalizedLessons.push({
         id: lesson.id,
         title: lesson.title,
         type: lesson.type,
         duration: lesson.duration,
         summary: lesson.summary,
-        content: lesson.content ?? undefined,
+        content: await resolveContentMediaUrls(lesson.content, supabase),
         videoUrl: await resolveVideoUrl(lesson.video_url, supabase),
+        resources: await Promise.all(
+          lessonResources.map(async (resource) => ({
+            id: resource.id,
+            title: resource.title,
+            description: resource.description ?? undefined,
+            fileType: resource.file_type,
+            signedUrl: await resolveResourceUrl(
+              resource.storage_path,
+              supabase,
+            ),
+          })),
+        ),
       });
     }
 

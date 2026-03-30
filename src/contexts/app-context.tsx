@@ -75,6 +75,7 @@ interface AppState {
   }) => string;
   markOrderPaid: (orderId: string) => void;
   markLessonComplete: (courseSlug: string, lessonId: string) => void;
+  markLessonInProgress: (courseSlug: string, lessonId: string) => void;
   saveVideoPosition: (lessonId: string, time: number) => void;
   markDownloaded: (params: {
     id: string;
@@ -289,6 +290,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const markLessonInProgress = useCallback(
+    (courseSlug: string, lessonId: string) => {
+      setState((prev) => {
+        const existing = prev.learningProgress[courseSlug] ?? [];
+        if (!existing.includes(lessonId)) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          learningProgress: {
+            ...prev.learningProgress,
+            [courseSlug]: existing.filter((item) => item !== lessonId),
+          },
+        };
+      });
+    },
+    [],
+  );
+
   const saveVideoPosition = useCallback((lessonId: string, time: number) => {
     setState((prev) => ({
       ...prev,
@@ -377,6 +398,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       purchaseCourse,
       markOrderPaid,
       markLessonComplete,
+      markLessonInProgress,
       saveVideoPosition,
       markDownloaded,
       saveIssuedCredential,
@@ -390,6 +412,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       logout,
       markDownloaded,
       markLessonComplete,
+      markLessonInProgress,
       markOrderPaid,
       purchaseCourse,
       saveIssuedCredential,

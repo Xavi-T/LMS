@@ -1,9 +1,18 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { getCourseBySlug } from "@/lib/course";
 import { formatCurrency } from "@/lib/utils";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { supabaseEnv } from "@/lib/supabase/env";
+
+const parseCourseSlugs = (value: string | null | undefined) => {
+  if (!value) return [] as string[];
+  return value
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+};
 
 type CourseDetailView = {
   slug: string;
@@ -107,11 +116,6 @@ const getCourseDetailBySlug = async (
         })),
       })),
       outcomes: fallback.outcomes,
-      reviews: fallback.reviews.map((review) => ({
-        id: review.id,
-        studentName: review.studentName,
-        comment: review.comment,
-      })),
     };
   }
 
@@ -163,14 +167,48 @@ const getCourseDetailBySlug = async (
   };
 };
 
+const getStudentOwnedCourseSlugs = async () => {
+  const cookieStore = await cookies();
+  const role = cookieStore.get("lms_role")?.value;
+  const email = cookieStore.get("lms_student_email")?.value?.trim();
+
+  if (role !== "student" || !email) {
+    return [] as string[];
+  }
+
+  const supabase = getSupabaseServiceClient();
+  if (!supabase) {
+    return [] as string[];
+  }
+
+  const { data } = await supabase
+    .from("customer_accounts")
+    .select("status, course_slug")
+    .ilike("email", email.toLowerCase())
+    .maybeSingle();
+
+  if (!data || data.status !== "active") {
+    return [] as string[];
+  }
+
+  return parseCourseSlugs(data.course_slug);
+};
+
 export default async function CourseDetailPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const course = await getCourseDetailBySlug(slug);
+  const normalizedSlug = slug.trim().toLowerCase();
+  const [course, ownedCourseSlugs] = await Promise.all([
+    getCourseDetailBySlug(normalizedSlug),
+    getStudentOwnedCourseSlugs(),
+  ]);
   const firstLessonId = course?.chapters[0]?.lessons[0]?.id;
+  const isOwnedByStudent = course
+    ? ownedCourseSlugs.includes(course.slug.trim().toLowerCase())
+    : false;
 
   if (!course) {
     notFound();
@@ -197,29 +235,54 @@ export default async function CourseDetailPage({
         </div>
 
         <aside className="card h-fit space-y-4 p-4 md:sticky md:top-20">
-          <p className="text-2xl font-black text-accent">
-            {formatCurrency(course.price)}
-          </p>
-          <Link
-            href={`/checkout?course=${course.slug}`}
-            className="btn-primary block px-4 py-3 text-center text-sm"
-          >
-            Mua ngay
-          </Link>
-          {firstLessonId ? (
-            <Link
-              href={`/learn/${course.slug}/${firstLessonId}`}
-              className="btn-secondary block px-4 py-3 text-center text-sm"
-            >
-              Đăng ký học thử
-            </Link>
+          {isOwnedByStudent ? (
+            <>
+              <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                Bạn đã sở hữu khóa học này.
+              </p>
+              {firstLessonId ? (
+                <Link
+                  href={`/learn/${course.slug}/${firstLessonId}`}
+                  className="btn-primary block px-4 py-3 text-center text-sm"
+                >
+                  Vào khóa học
+                </Link>
+              ) : (
+                <button
+                  className="btn-secondary block w-full cursor-not-allowed px-4 py-3 text-center text-sm opacity-70"
+                  disabled
+                >
+                  Chưa có bài học
+                </button>
+              )}
+            </>
           ) : (
-            <button
-              className="btn-secondary block w-full cursor-not-allowed px-4 py-3 text-center text-sm opacity-70"
-              disabled
-            >
-              Chưa có bài học thử
-            </button>
+            <>
+              <p className="text-2xl font-black text-accent">
+                {formatCurrency(course.price)}
+              </p>
+              <Link
+                href={`/checkout?course=${course.slug}`}
+                className="btn-primary block px-4 py-3 text-center text-sm"
+              >
+                Mua ngay
+              </Link>
+              {firstLessonId ? (
+                <Link
+                  href={`/learn/${course.slug}/${firstLessonId}`}
+                  className="btn-secondary block px-4 py-3 text-center text-sm"
+                >
+                  Đăng ký học thử
+                </Link>
+              ) : (
+                <button
+                  className="btn-secondary block w-full cursor-not-allowed px-4 py-3 text-center text-sm opacity-70"
+                  disabled
+                >
+                  Chưa có bài học thử
+                </button>
+              )}
+            </>
           )}
           <div className="text-sm text-zinc-300">
             <p className="font-semibold text-white">Giảng viên</p>

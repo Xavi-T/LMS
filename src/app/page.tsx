@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
@@ -8,7 +10,14 @@ import {
 import { CourseCard } from "@/components/course/course-card";
 import { courses, feedbacks } from "@/lib/mock-data";
 
-export default function Home() {
+export default async function Home() {
+  const cookieStore = await cookies();
+  const role = cookieStore.get("lms_role")?.value;
+
+  if (role === "student") {
+    redirect("/dashboard");
+  }
+
   const featured = courses.slice(0, 3);
 
   return (

@@ -231,6 +231,8 @@ export async function PATCH(request: NextRequest) {
     is_best_seller?: boolean;
     thumbnail?: string;
     intro_video_url?: string | null;
+    instructor_name?: string;
+    instructor_title?: string;
   } = {};
 
   if (typeof title === "string" && title.trim()) {

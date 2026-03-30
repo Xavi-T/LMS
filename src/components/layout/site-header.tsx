@@ -9,8 +9,7 @@ const links = [
   { href: "/", label: "Trang chủ" },
   { href: "/chuong-trinh-thuc-chien", label: "Chương trình" },
   { href: "/courses", label: "Khóa học" },
-  { href: "/resources", label: "Kho tài liệu" },
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Khóa học của tôi" },
   { href: "/contact", label: "Liên hệ" },
 ];
 
