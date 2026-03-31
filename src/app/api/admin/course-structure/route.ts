@@ -27,6 +27,10 @@ export async function GET(request: NextRequest) {
   if (unauthorized) return unauthorized;
 
   const courseId = request.nextUrl.searchParams.get("courseId");
+  const chapterId = request.nextUrl.searchParams.get("chapterId");
+  const lessonId = request.nextUrl.searchParams.get("lessonId");
+  const includeResources =
+    request.nextUrl.searchParams.get("includeResources") !== "false";
   if (!courseId) {
     return NextResponse.json(
       { error: "courseId là bắt buộc." },
@@ -42,11 +46,17 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { data: chapters, error: chapterError } = await supabase
+  let chapterQuery = supabase
     .from("chapters")
     .select("id, course_id, title, position")
     .eq("course_id", courseId)
     .order("position", { ascending: true });
+
+  if (chapterId) {
+    chapterQuery = chapterQuery.eq("id", chapterId);
+  }
+
+  const { data: chapters, error: chapterError } = await chapterQuery;
 
   if (chapterError) {
     return NextResponse.json(
@@ -60,13 +70,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ chapters: [] });
   }
 
-  const { data: lessons, error: lessonError } = await supabase
+  let lessonQuery = supabase
     .from("lessons")
     .select(
       "id, chapter_id, title, type, duration, summary, content, video_url, position",
     )
     .in("chapter_id", chapterIds)
     .order("position", { ascending: true });
+
+  if (lessonId) {
+    lessonQuery = lessonQuery.eq("id", lessonId);
+  }
+
+  const { data: lessons, error: lessonError } = await lessonQuery;
 
   if (lessonError) {
     return NextResponse.json(
@@ -78,7 +94,20 @@ export async function GET(request: NextRequest) {
   const lessonMap = new Map<string, typeof lessons>();
   for (const lesson of lessons ?? []) {
     const existing = lessonMap.get(lesson.chapter_id) ?? [];
-    lessonMap.set(lesson.chapter_id, [...existing, lesson]);
+    existing.push(lesson);
+    lessonMap.set(lesson.chapter_id, existing);
+  }
+
+  if (!includeResources) {
+    return NextResponse.json({
+      chapters: (chapters ?? []).map((chapter) => ({
+        ...chapter,
+        lessons: (lessonMap.get(chapter.id) ?? []).map((lesson) => ({
+          ...lesson,
+          resources: [],
+        })),
+      })),
+    });
   }
 
   const lessonIds = (lessons ?? []).map((lesson) => lesson.id);
@@ -122,7 +151,8 @@ export async function GET(request: NextRequest) {
   for (const resource of lessonResources) {
     if (!resource.lesson_id) continue;
     const existing = lessonResourceMap.get(resource.lesson_id) ?? [];
-    lessonResourceMap.set(resource.lesson_id, [...existing, resource]);
+    existing.push(resource);
+    lessonResourceMap.set(resource.lesson_id, existing);
   }
 
   return NextResponse.json({

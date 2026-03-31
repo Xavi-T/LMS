@@ -83,7 +83,7 @@ export default function AdminLessonDetailPage() {
     try {
       const [lesson, allResources] = await Promise.all([
         getLessonById(courseId, chapterId, lessonId),
-        getResources(),
+        getResources({ lessonId }),
       ]);
 
       if (!lesson) {
@@ -346,7 +346,6 @@ export default function AdminLessonDetailPage() {
                         duration: "Đang cập nhật",
                         videoUrl: videoPath.trim() || null,
                       });
-                      await loadData();
                       setSuccess("Đã lưu bài học.");
                       showToast({
                         type: "success",
@@ -435,7 +434,7 @@ export default function AdminLessonDetailPage() {
                   const resourceTitle = resourceDraft.title.trim() || file.name;
                   const resourceDescription = resourceDraft.description.trim();
 
-                  await createResource({
+                  const resource = await createResource({
                     lessonId,
                     title: resourceTitle,
                     description: resourceDescription || undefined,
@@ -451,7 +450,7 @@ export default function AdminLessonDetailPage() {
                     storagePath: "",
                     previewImage: "",
                   });
-                  setResources(await getResources());
+                  setResources((prev) => [...prev, resource]);
                   setSuccess("Đã upload và thêm tài liệu khóa học.");
                   showToast({
                     type: "success",
@@ -546,7 +545,9 @@ export default function AdminLessonDetailPage() {
                       setError("");
                       try {
                         await deleteResource(resource.id);
-                        setResources(await getResources());
+                        setResources((prev) =>
+                          prev.filter((item) => item.id !== resource.id),
+                        );
                         showToast({
                           type: "success",
                           message: "Đã xóa tài liệu.",

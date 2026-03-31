@@ -6,7 +6,10 @@ import type {
 } from "./types";
 
 const requestJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(url, init);
+  const response = await fetch(url, {
+    credentials: "include",
+    ...init,
+  });
   const result = await response.json();
   if (!response.ok) {
     throw new Error(result?.error ?? "Có lỗi xảy ra khi gọi API.");
@@ -25,16 +28,22 @@ export const normalizeCourseSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-export const getCourses = async () => {
+export const getCourses = async (options?: { id?: string }) => {
+  const params = new URLSearchParams();
+  if (options?.id) {
+    params.set("id", options.id);
+  }
+
+  const suffix = params.toString();
   const result = await requestJson<{ courses: ManagedCourse[] }>(
-    "/api/admin/courses",
+    `/api/admin/courses${suffix ? `?${suffix}` : ""}`,
     { cache: "no-store" },
   );
   return result.courses ?? [];
 };
 
 export const getCourseById = async (courseId: string) => {
-  const courses = await getCourses();
+  const courses = await getCourses({ id: courseId });
   return courses.find((item) => item.id === courseId) ?? null;
 };
 
@@ -93,16 +102,37 @@ export const deleteCourse = async (courseId: string) => {
   });
 };
 
-export const getStructure = async (courseId: string) => {
+export const getStructure = async (
+  courseId: string,
+  options?: {
+    chapterId?: string;
+    lessonId?: string;
+    includeResources?: boolean;
+  },
+) => {
+  const params = new URLSearchParams({ courseId });
+  if (options?.chapterId) {
+    params.set("chapterId", options.chapterId);
+  }
+  if (options?.lessonId) {
+    params.set("lessonId", options.lessonId);
+  }
+  if (options?.includeResources === false) {
+    params.set("includeResources", "false");
+  }
+
   const result = await requestJson<{ chapters: ChapterItem[] }>(
-    `/api/admin/course-structure?courseId=${courseId}`,
+    `/api/admin/course-structure?${params.toString()}`,
     { cache: "no-store" },
   );
   return result.chapters ?? [];
 };
 
 export const getChapterById = async (courseId: string, chapterId: string) => {
-  const chapters = await getStructure(courseId);
+  const chapters = await getStructure(courseId, {
+    chapterId,
+    includeResources: false,
+  });
   return chapters.find((item) => item.id === chapterId) ?? null;
 };
 
@@ -111,7 +141,12 @@ export const getLessonById = async (
   chapterId: string,
   lessonId: string,
 ) => {
-  const chapter = await getChapterById(courseId, chapterId);
+  const chapters = await getStructure(courseId, {
+    chapterId,
+    lessonId,
+    includeResources: false,
+  });
+  const chapter = chapters.find((item) => item.id === chapterId) ?? null;
   if (!chapter) return null;
   return chapter.lessons.find((item) => item.id === lessonId) ?? null;
 };
@@ -196,9 +231,21 @@ export const deleteLesson = async (lessonId: string) => {
   );
 };
 
-export const getResources = async () => {
+export const getResources = async (options?: {
+  lessonId?: string;
+  courseId?: string;
+}) => {
+  const params = new URLSearchParams();
+  if (options?.lessonId) {
+    params.set("lessonId", options.lessonId);
+  }
+  if (options?.courseId) {
+    params.set("courseId", options.courseId);
+  }
+
+  const suffix = params.toString();
   const result = await requestJson<{ resources: ManagedResource[] }>(
-    "/api/admin/resources",
+    `/api/admin/resources${suffix ? `?${suffix}` : ""}`,
     { cache: "no-store" },
   );
   return result.resources ?? [];

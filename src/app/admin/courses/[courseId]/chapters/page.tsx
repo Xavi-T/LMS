@@ -30,7 +30,7 @@ export default function AdminChapterListPage() {
     try {
       const [course, chapterRows] = await Promise.all([
         getCourseById(courseId),
-        getStructure(courseId),
+        getStructure(courseId, { includeResources: false }),
       ]);
       setCourseTitle(course?.title ?? "Không xác định");
       setChapters(chapterRows);

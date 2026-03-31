@@ -35,6 +35,9 @@ export async function GET(request: NextRequest) {
   const unauthorized = ensureAdminRequest(request);
   if (unauthorized) return unauthorized;
 
+  const courseId = request.nextUrl.searchParams.get("courseId");
+  const lessonId = request.nextUrl.searchParams.get("lessonId");
+
   const supabase = getSupabaseServiceClient();
   if (!supabase) {
     return NextResponse.json(
@@ -43,20 +46,39 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("course_resources")
     .select(
       "id, course_id, lesson_id, title, description, file_type, preview_image, storage_path",
     )
     .order("title", { ascending: true });
 
+  if (courseId) {
+    query = query.eq("course_id", courseId);
+  }
+  if (lessonId) {
+    query = query.eq("lesson_id", lessonId);
+  }
+
+  const { data, error } = await query;
+
   if (hasMissingLessonIdColumn(error)) {
-    const { data: fallbackData, error: fallbackError } = await supabase
+    if (lessonId) {
+      return NextResponse.json({ resources: [] });
+    }
+
+    let fallbackQuery = supabase
       .from("course_resources")
       .select(
         "id, course_id, title, description, file_type, preview_image, storage_path",
       )
       .order("title", { ascending: true });
+
+    if (courseId) {
+      fallbackQuery = fallbackQuery.eq("course_id", courseId);
+    }
+
+    const { data: fallbackData, error: fallbackError } = await fallbackQuery;
 
     if (fallbackError) {
       return NextResponse.json(

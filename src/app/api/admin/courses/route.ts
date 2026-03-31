@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
   const unauthorized = ensureAdminRequest(request);
   if (unauthorized) return unauthorized;
 
+  const id = request.nextUrl.searchParams.get("id");
+
   const supabase = getSupabaseServiceClient();
   if (!supabase) {
     return NextResponse.json(
@@ -26,10 +28,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { data, error } = await supabase
+  let courseQuery = supabase
     .from("courses")
     .select(selectFields)
     .order("created_at", { ascending: false });
+
+  if (id) {
+    courseQuery = courseQuery.eq("id", id);
+  }
+
+  const { data, error } = await courseQuery;
 
   if (error) {
     return NextResponse.json(
@@ -62,7 +70,8 @@ export async function GET(request: NextRequest) {
   const outcomeMap = new Map<string, string[]>();
   for (const row of outcomeRows ?? []) {
     const list = outcomeMap.get(row.course_id) ?? [];
-    outcomeMap.set(row.course_id, [...list, row.content]);
+    list.push(row.content);
+    outcomeMap.set(row.course_id, list);
   }
 
   return NextResponse.json({
