@@ -40,7 +40,6 @@ export default function AdminLessonDetailPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [savingLesson, setSavingLesson] = useState(false);
-  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingResource, setUploadingResource] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -71,11 +70,15 @@ export default function AdminLessonDetailPage() {
 
   const saveDisabledReason = useMemo(() => {
     if (savingLesson) return "Đang lưu bài học...";
-    if (uploadingVideo) return "Đang upload video, vui lòng chờ.";
     if (uploadingResource) return "Đang upload tài liệu, vui lòng chờ.";
     if (!title.trim()) return "Vui lòng nhập tên bài học.";
     return "";
-  }, [savingLesson, title, uploadingResource, uploadingVideo]);
+  }, [savingLesson, title, uploadingResource]);
+
+  const isBunnyPlayerUrl = (value: string) =>
+    /^https:\/\/player\.mediadelivery\.net\/play\/\d+\/[a-z0-9-]+(?:\?.*)?$/i.test(
+      value.trim(),
+    );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -159,65 +162,42 @@ export default function AdminLessonDetailPage() {
       )}
 
       <section className="card space-y-3 p-4 md:p-5">
-        <h2 className="text-lg font-bold">
-          1) Upload video bài học (tuỳ chọn)
-        </h2>
-        <label className="rounded-lg border border-border px-3 py-2 text-sm text-zinc-300">
-          Upload video
+        <h2 className="text-lg font-bold">1) URL video Bunny (tuỳ chọn)</h2>
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <label className="text-sm text-zinc-300">URL Bunny player</label>
           <input
-            type="file"
-            accept="video/*"
-            className="mt-2 block w-full text-xs"
-            disabled={uploadingVideo || submitting}
-            onChange={async (event) => {
-              const inputElement = event.currentTarget;
-              const file = inputElement.files?.[0];
-              if (!file) return;
-
-              const startedAt = Date.now();
-              setUploadingVideo(true);
-              setError("");
-              setSuccess("Đang upload video...");
-              try {
-                const filePath = await uploadMedia(file, "lesson-videos");
-                setVideoPath(filePath);
-                setVideoPreviewUrl(await getMediaPreviewUrl(filePath));
-                setSuccess("Đã upload video bài học.");
-                showToast({
-                  type: "success",
-                  message: "Đã upload video bài học.",
-                });
-              } catch (err) {
-                const message =
-                  err instanceof Error ? err.message : "Upload video thất bại.";
-                setError(message);
-                showToast({ type: "error", message });
-              } finally {
-                await ensureLoadingVisible(startedAt);
-                setUploadingVideo(false);
-                inputElement.value = "";
-              }
+            value={videoPath}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              setVideoPath(nextValue);
+              setVideoPreviewUrl(nextValue.trim());
             }}
+            className="w-full rounded-lg border border-border bg-black px-3 py-2 text-sm"
+            placeholder="https://player.mediadelivery.net/play/628811/a585f839-e3d2-4ce6-b4b9-08d979b71440"
           />
-        </label>
-
-        {uploadingVideo && (
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-black/20 px-3 py-2 text-xs text-zinc-300">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent" />
-            Đang upload video, vui lòng chờ...
-          </div>
-        )}
+          <p className="text-xs text-zinc-500">
+            Chỉ lưu URL Bunny player, không upload file video lên hệ thống.
+          </p>
+        </div>
 
         {videoPath ? (
           <article className="space-y-2 rounded-xl border border-border bg-black/30 p-3">
             <p className="truncate text-xs text-zinc-500">Video: {videoPath}</p>
-            <div className="overflow-hidden rounded-xl border border-border bg-black">
-              <video
-                src={videoPreviewUrl || videoPath}
-                controls
-                className="aspect-video w-full"
-              />
-            </div>
+            {isBunnyPlayerUrl(videoPath) ? (
+              <div className="overflow-hidden rounded-xl border border-border bg-black">
+                <iframe
+                  src={videoPreviewUrl || videoPath}
+                  loading="lazy"
+                  allow="accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;"
+                  allowFullScreen
+                  className="aspect-video w-full"
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-amber-300">
+                URL chưa đúng định dạng Bunny player.
+              </p>
+            )}
           </article>
         ) : (
           <p className="text-xs text-zinc-500">
@@ -337,6 +317,16 @@ export default function AdminLessonDetailPage() {
                     setError("");
                     setSuccess("Đang lưu bài học...");
                     try {
+                      const normalizedVideoUrl = videoPath.trim();
+                      if (
+                        normalizedVideoUrl &&
+                        !isBunnyPlayerUrl(normalizedVideoUrl)
+                      ) {
+                        throw new Error(
+                          "URL video không hợp lệ. Vui lòng dùng link Bunny dạng https://player.mediadelivery.net/play/{library}/{videoId}.",
+                        );
+                      }
+
                       await updateLesson(lessonId, {
                         title,
                         summary:
@@ -344,7 +334,7 @@ export default function AdminLessonDetailPage() {
                         content,
                         type: "video",
                         duration: "Đang cập nhật",
-                        videoUrl: videoPath.trim() || null,
+                        videoUrl: normalizedVideoUrl || null,
                       });
                       setSuccess("Đã lưu bài học.");
                       showToast({

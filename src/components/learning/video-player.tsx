@@ -16,11 +16,38 @@ export function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [videoAspectRatio, setVideoAspectRatio] = useState(16 / 9);
+  const normalizedSrc = src?.trim() ?? "";
+  const isBunnyPlayerUrl =
+    /^https:\/\/player\.mediadelivery\.net\/play\/\d+\/[a-z0-9-]+(?:\?.*)?$/i.test(
+      normalizedSrc,
+    );
 
-  if (!src) {
+  if (!normalizedSrc) {
     return (
       <div className="flex h-60 items-center justify-center rounded-2xl border border-dashed border-border text-sm text-zinc-400 md:h-96">
         Nội dung dạng văn bản - không có video cho bài này.
+      </div>
+    );
+  }
+
+  if (isBunnyPlayerUrl) {
+    return (
+      <div className="mx-auto w-full max-w-4xl space-y-3">
+        <div
+          className="overflow-hidden rounded-2xl border border-border bg-black"
+          style={{ aspectRatio: `${videoAspectRatio}` }}
+        >
+          <iframe
+            src={normalizedSrc}
+            loading="lazy"
+            allow="accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;"
+            allowFullScreen
+            className="h-full w-full"
+          />
+        </div>
+        <div className="card p-3 text-xs text-zinc-400">
+          Video đang phát qua Bunny Player URL.
+        </div>
       </div>
     );
   }
@@ -34,7 +61,7 @@ export function VideoPlayer({
       >
         <video
           ref={videoRef}
-          src={src}
+          src={normalizedSrc}
           className="h-full w-full bg-black object-contain"
           controls={false}
           controlsList="nodownload noplaybackrate"
