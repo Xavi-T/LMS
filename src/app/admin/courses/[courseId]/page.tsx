@@ -33,8 +33,7 @@ export default function AdminCourseDetailPage() {
 
   const [form, setForm] = useState({
     title: "",
-    shortDescription: "",
-    detailedDescription: "",
+    description: "",
     category: "in-an" as "in-an" | "thiet-ke" | "kinh-doanh",
     level: "Cơ bản" as "Cơ bản" | "Nâng cao",
     price: 0,
@@ -65,9 +64,7 @@ export default function AdminCourseDetailPage() {
 
       const nextForm = {
         title: course.title,
-        shortDescription: course.short_description,
-        detailedDescription:
-          course.detailed_description ?? course.short_description,
+        description: course.detailed_description ?? course.short_description,
         category: course.category,
         level: course.level,
         price: course.price,
@@ -202,28 +199,16 @@ export default function AdminCourseDetailPage() {
                     <option value="Nâng cao">Nâng cao</option>
                   </select>
                   <textarea
-                    value={form.shortDescription}
+                    value={form.description}
                     onChange={(event) =>
                       setForm((prev) => ({
                         ...prev,
-                        shortDescription: event.target.value,
-                      }))
-                    }
-                    rows={3}
-                    className="rounded-lg border border-border bg-black px-3 py-2 md:col-span-2"
-                    placeholder="Mô tả ngắn"
-                  />
-                  <textarea
-                    value={form.detailedDescription}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        detailedDescription: event.target.value,
+                        description: event.target.value,
                       }))
                     }
                     rows={4}
                     className="rounded-lg border border-border bg-black px-3 py-2 md:col-span-2"
-                    placeholder="Mô tả chi tiết"
+                    placeholder="Mô tả khóa học"
                   />
                   <input
                     value={form.instructorName}
@@ -426,9 +411,7 @@ export default function AdminCourseDetailPage() {
                     try {
                       await updateCourse(courseId, {
                         title: form.title,
-                        shortDescription: form.shortDescription,
-                        detailedDescription:
-                          form.detailedDescription || form.shortDescription,
+                        description: form.description,
                         category: form.category,
                         level: form.level,
                         price: form.price,

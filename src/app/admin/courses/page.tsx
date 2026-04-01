@@ -21,19 +21,41 @@ export default function AdminCoursesPage() {
   const [newCourse, setNewCourse] = useState({
     title: "",
     slug: "",
-    shortDescription: "",
-    detailedDescription: "",
-    category: "in-an" as "in-an" | "thiet-ke" | "kinh-doanh",
-    level: "Cơ bản" as "Cơ bản" | "Nâng cao",
+    description: "",
     price: "",
   });
+
+  const existingSlugs = useMemo(
+    () => new Set(courses.map((course) => course.slug.trim().toLowerCase())),
+    [courses],
+  );
+
+  const makeUniqueSlug = (title: string) => {
+    const baseSlug = normalizeCourseSlug(title);
+    if (!baseSlug) {
+      return "";
+    }
+
+    if (!existingSlugs.has(baseSlug)) {
+      return baseSlug;
+    }
+
+    let index = 2;
+    let nextSlug = `${baseSlug}-${index}`;
+    while (existingSlugs.has(nextSlug)) {
+      index += 1;
+      nextSlug = `${baseSlug}-${index}`;
+    }
+
+    return nextSlug;
+  };
 
   const isCreateDisabled = useMemo(
     () =>
       submitting ||
       !newCourse.title.trim() ||
       !newCourse.slug.trim() ||
-      !newCourse.shortDescription.trim() ||
+      !newCourse.description.trim() ||
       !newCourse.price.trim(),
     [newCourse, submitting],
   );
@@ -101,77 +123,30 @@ export default function AdminCoursesPage() {
               setNewCourse((prev) => ({
                 ...prev,
                 title,
-                slug: normalizeCourseSlug(title),
+                slug: makeUniqueSlug(title),
               }));
             }}
           />
           <input
             className="rounded-lg border border-border bg-black px-3 py-2"
-            placeholder="slug"
+            placeholder="Slug khóa học (tự sinh)"
             value={newCourse.slug}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                slug: normalizeCourseSlug(event.target.value),
-              }))
-            }
+            readOnly
           />
           <textarea
             className="rounded-lg border border-border bg-black px-3 py-2"
-            placeholder="Mô tả ngắn"
-            rows={2}
-            value={newCourse.shortDescription}
+            placeholder="Mô tả khóa học"
+            rows={3}
+            value={newCourse.description}
             onChange={(event) =>
               setNewCourse((prev) => ({
                 ...prev,
-                shortDescription: event.target.value,
+                description: event.target.value,
               }))
             }
           />
-          <textarea
-            className="rounded-lg border border-border bg-black px-3 py-2"
-            placeholder="Mô tả chi tiết"
-            rows={2}
-            value={newCourse.detailedDescription}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                detailedDescription: event.target.value,
-              }))
-            }
-          />
-          <select
-            className="rounded-lg border border-border bg-black px-3 py-2"
-            value={newCourse.category}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                category: event.target.value as
-                  | "in-an"
-                  | "thiet-ke"
-                  | "kinh-doanh",
-              }))
-            }
-          >
-            <option value="in-an">In ấn</option>
-            <option value="thiet-ke">Thiết kế</option>
-            <option value="kinh-doanh">Kinh doanh</option>
-          </select>
-          <select
-            className="rounded-lg border border-border bg-black px-3 py-2"
-            value={newCourse.level}
-            onChange={(event) =>
-              setNewCourse((prev) => ({
-                ...prev,
-                level: event.target.value as "Cơ bản" | "Nâng cao",
-              }))
-            }
-          >
-            <option value="Cơ bản">Cơ bản</option>
-            <option value="Nâng cao">Nâng cao</option>
-          </select>
           <input
-            className="rounded-lg border border-border bg-black px-3 py-2 md:col-span-2"
+            className="rounded-lg border border-border bg-black px-3 py-2"
             placeholder="Giá"
             inputMode="numeric"
             value={newCourse.price}
@@ -195,21 +170,14 @@ export default function AdminCoursesPage() {
                 await createCourse({
                   title: newCourse.title,
                   slug: newCourse.slug,
-                  shortDescription: newCourse.shortDescription,
-                  detailedDescription:
-                    newCourse.detailedDescription || newCourse.shortDescription,
-                  category: newCourse.category,
-                  level: newCourse.level,
+                  description: newCourse.description,
                   price: Number(newCourse.price || "0"),
                 });
                 setSuccess("Đã tạo khóa học.");
                 setNewCourse({
                   title: "",
                   slug: "",
-                  shortDescription: "",
-                  detailedDescription: "",
-                  category: "in-an",
-                  level: "Cơ bản",
+                  description: "",
                   price: "",
                 });
                 await loadCourses();

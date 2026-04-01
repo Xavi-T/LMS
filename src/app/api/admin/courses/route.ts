@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
   const body = await parseBody(request);
   const slug = body?.slug as string | undefined;
   const title = body?.title as string | undefined;
+  const description = body?.description as string | undefined;
   const shortDescription = body?.shortDescription as string | undefined;
   const detailedDescription = body?.detailedDescription as string | undefined;
   const category = body?.category as
@@ -111,25 +112,25 @@ export async function POST(request: NextRequest) {
   if (
     !slug ||
     !title ||
-    !shortDescription ||
-    !level ||
+    !(description || shortDescription) ||
     typeof price !== "number"
   ) {
     return NextResponse.json(
       {
-        error:
-          "slug, title, shortDescription, level, price là bắt buộc khi tạo khóa học.",
+        error: "slug, title, description, price là bắt buộc khi tạo khóa học.",
       },
       { status: 400 },
     );
   }
 
-  if (!["in-an", "thiet-ke", "kinh-doanh"].includes(category ?? "")) {
-    return NextResponse.json(
-      { error: "category không hợp lệ." },
-      { status: 400 },
-    );
-  }
+  const resolvedCategory = ["in-an", "thiet-ke", "kinh-doanh"].includes(
+    category ?? "",
+  )
+    ? (category as "in-an" | "thiet-ke" | "kinh-doanh")
+    : "in-an";
+
+  const resolvedLevel: "Cơ bản" | "Nâng cao" =
+    level === "Nâng cao" ? "Nâng cao" : "Cơ bản";
 
   const supabase = getSupabaseServiceClient();
   if (!supabase) {
@@ -146,16 +147,37 @@ export async function POST(request: NextRequest) {
     .replace(/[^a-z0-9-]/g, "")
     .replace(/-+/g, "-");
 
+  const { data: existingSlug, error: slugCheckError } = await supabase
+    .from("courses")
+    .select("id")
+    .eq("slug", normalizedSlug)
+    .maybeSingle();
+
+  if (slugCheckError) {
+    return NextResponse.json(
+      { error: formatSupabaseError(slugCheckError) },
+      { status: 500 },
+    );
+  }
+
+  if (existingSlug) {
+    return NextResponse.json(
+      { error: "Slug khóa học đã tồn tại. Vui lòng đổi tên khóa học." },
+      { status: 409 },
+    );
+  }
+
+  const resolvedDescription = (description || shortDescription || "").trim();
+
   const { data, error } = await supabase
     .from("courses")
     .insert({
       slug: normalizedSlug,
       title: title.trim(),
-      short_description: shortDescription.trim(),
-      detailed_description:
-        detailedDescription?.trim() || shortDescription.trim(),
-      category,
-      level,
+      short_description: resolvedDescription,
+      detailed_description: detailedDescription?.trim() || resolvedDescription,
+      category: resolvedCategory,
+      level: resolvedLevel,
       is_best_seller: false,
       students_count: 0,
       rating: 0,
@@ -205,6 +227,7 @@ export async function PATCH(request: NextRequest) {
 
   const body = await parseBody(request);
   const id = body?.id as string | undefined;
+  const description = body?.description as string | undefined;
   const title = body?.title as string | undefined;
   const shortDescription = body?.shortDescription as string | undefined;
   const detailedDescription = body?.detailedDescription as string | undefined;
@@ -252,6 +275,11 @@ export async function PATCH(request: NextRequest) {
   }
   if (typeof detailedDescription === "string") {
     updatePayload.detailed_description = detailedDescription.trim();
+  }
+  if (typeof description === "string") {
+    const normalizedDescription = description.trim();
+    updatePayload.short_description = normalizedDescription;
+    updatePayload.detailed_description = normalizedDescription;
   }
   if (
     category === "in-an" ||

@@ -50,10 +50,7 @@ export const getCourseById = async (courseId: string) => {
 export const createCourse = async (payload: {
   slug: string;
   title: string;
-  shortDescription: string;
-  detailedDescription: string;
-  category: "in-an" | "thiet-ke" | "kinh-doanh";
-  level: "Cơ bản" | "Nâng cao";
+  description: string;
   price: number;
   thumbnail?: string;
   introVideoUrl?: string;
@@ -73,8 +70,7 @@ export const updateCourse = async (
   courseId: string,
   payload: Partial<{
     title: string;
-    shortDescription: string;
-    detailedDescription: string;
+    description: string;
     category: "in-an" | "thiet-ke" | "kinh-doanh";
     level: "Cơ bản" | "Nâng cao";
     price: number;
