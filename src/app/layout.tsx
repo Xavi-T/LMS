@@ -17,10 +17,64 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://hocinao.vn";
+const siteName = "SportPrint LMS";
+const siteTitle = "SportPrint LMS | Đào tạo In ấn & Kinh doanh đồ thể thao";
+const siteDescription =
+  "Nền tảng LMS cho kỹ thuật in ấn, thiết kế file in và kinh doanh đồ thể thao.";
+
 export const metadata: Metadata = {
-  title: "SportPrint LMS | Đào tạo In ấn & Kinh doanh đồ thể thao",
-  description:
-    "Nền tảng LMS cho kỹ thuật in ấn, thiết kế file in và kinh doanh đồ thể thao.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: siteTitle,
+    template: "%s | SportPrint LMS",
+  },
+  description: siteDescription,
+  applicationName: siteName,
+  keywords: [
+    "lms in áo",
+    "khóa học in ấn",
+    "học in áo thể thao",
+    "thiết kế file in",
+    "kinh doanh đồ thể thao",
+    "sportprint lms",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "vi_VN",
+    url: siteUrl,
+    siteName,
+    title: siteTitle,
+    description: siteDescription,
+    images: [
+      {
+        url: "/logo-sportprint.svg",
+        width: 1200,
+        height: 630,
+        alt: "SportPrint LMS",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+    images: ["/logo-sportprint.svg"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],

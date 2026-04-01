@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { getCourseBySlug } from "@/lib/course";
@@ -193,6 +194,64 @@ const getStudentOwnedCourseSlugs = async () => {
 
   return parseCourseSlugs(data.course_slug);
 };
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const normalizedSlug = slug.trim().toLowerCase();
+  const course = await getCourseDetailBySlug(normalizedSlug);
+
+  if (!course) {
+    return {
+      title: "Không tìm thấy khóa học",
+      description: "Khóa học không tồn tại hoặc đã được gỡ khỏi hệ thống.",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
+
+  return {
+    title: course.title,
+    description: course.shortDescription,
+    alternates: {
+      canonical: `/courses/${course.slug}`,
+    },
+    openGraph: {
+      type: "article",
+      url: `/courses/${course.slug}`,
+      title: `${course.title} | SportPrint LMS`,
+      description: course.shortDescription,
+      images: course.thumbnail
+        ? [
+            {
+              url: course.thumbnail,
+              width: 1200,
+              height: 630,
+              alt: course.title,
+            },
+          ]
+        : [
+            {
+              url: "/logo-sportprint.svg",
+              width: 1200,
+              height: 630,
+              alt: "SportPrint LMS",
+            },
+          ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${course.title} | SportPrint LMS`,
+      description: course.shortDescription,
+      images: [course.thumbnail || "/logo-sportprint.svg"],
+    },
+  };
+}
 
 export default async function CourseDetailPage({
   params,
