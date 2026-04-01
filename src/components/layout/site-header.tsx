@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Menu, UserCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useAppState } from "@/contexts/app-context";
@@ -42,8 +43,15 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-border/80 bg-black/90 backdrop-blur">
       <div className="container-app flex h-16 items-center justify-between">
-        <Link href="/" className="font-black tracking-wide">
-          SPORT<span className="text-accent">PRINT</span> LMS
+        <Link href="/" className="flex items-center">
+          <Image
+            src="/logo-sportprint.svg"
+            alt="SportPrint LMS"
+            width={180}
+            height={36}
+            priority
+            className="h-8 w-auto"
+          />
         </Link>
 
         <nav className="hidden items-center gap-6 text-sm md:flex">

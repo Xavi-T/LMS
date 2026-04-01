@@ -21,6 +21,11 @@ export const metadata: Metadata = {
   title: "SportPrint LMS | Đào tạo In ấn & Kinh doanh đồ thể thao",
   description:
     "Nền tảng LMS cho kỹ thuật in ấn, thiết kế file in và kinh doanh đồ thể thao.",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({
