@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "@/contexts/app-context";
 import {
   createResource,
@@ -50,18 +50,13 @@ export default function AdminLessonDetailPage() {
   const [videoPath, setVideoPath] = useState("");
   const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
   const [confirmDeleteLesson, setConfirmDeleteLesson] = useState(false);
+  const [isDragOverResource, setIsDragOverResource] = useState(false);
   const [insertingResourceId, setInsertingResourceId] = useState<string | null>(
     null,
   );
+  const resourceFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [resources, setResources] = useState<ManagedResource[]>([]);
-  const [resourceDraft, setResourceDraft] = useState({
-    title: "",
-    description: "",
-    fileType: ".PDF",
-    storagePath: "",
-    previewImage: "",
-  });
 
   const lessonResources = useMemo(
     () => resources.filter((item) => item.lesson_id === lessonId),
@@ -125,6 +120,49 @@ export default function AdminLessonDetailPage() {
       await new Promise((resolve) => setTimeout(resolve, 600 - elapsed));
     }
   };
+
+  const buildResourceTitle = (fileName: string) =>
+    fileName.replace(/\.[^.]+$/, "").trim() || fileName;
+
+  const uploadResourceFile = useCallback(
+    async (file: File) => {
+      const startedAt = Date.now();
+      setUploadingResource(true);
+      setError("");
+      setSuccess("Đang upload tài liệu...");
+      try {
+        const filePath = await uploadMedia(file, "course-resource-files");
+        const inferredFileType = inferFileType(file.name);
+        const previewUrl = file.type.startsWith("image/")
+          ? await getMediaPreviewUrl(filePath)
+          : "";
+
+        const resource = await createResource({
+          lessonId,
+          title: buildResourceTitle(file.name),
+          fileType: inferredFileType,
+          previewImage: previewUrl || undefined,
+          storagePath: filePath,
+        });
+
+        setResources((prev) => [...prev, resource]);
+        setSuccess("Đã upload và thêm tài liệu khóa học.");
+        showToast({
+          type: "success",
+          message: "Đã upload và thêm tài liệu vào danh sách.",
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Upload tài liệu thất bại.";
+        setError(message);
+        showToast({ type: "error", message });
+      } finally {
+        await ensureLoadingVisible(startedAt);
+        setUploadingResource(false);
+      }
+    },
+    [lessonId, showToast],
+  );
 
   if (!user || user.role !== "admin") {
     return (
@@ -370,115 +408,78 @@ export default function AdminLessonDetailPage() {
           3) Tài liệu khóa học (insert vào editor)
         </h2>
 
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="space-y-2">
           <input
-            className="rounded-lg border border-border bg-black px-3 py-2"
-            placeholder="Tên tài liệu"
-            value={resourceDraft.title}
-            onChange={(event) =>
-              setResourceDraft((prev) => ({
-                ...prev,
-                title: event.target.value,
-              }))
-            }
+            ref={resourceFileInputRef}
+            type="file"
+            className="hidden"
+            disabled={uploadingResource || submitting}
+            onChange={async (event) => {
+              const file = event.currentTarget.files?.[0];
+              if (!file) return;
+              await uploadResourceFile(file);
+              event.currentTarget.value = "";
+            }}
           />
-          <textarea
-            className="rounded-lg border border-border bg-black px-3 py-2"
-            placeholder="Mô tả tài liệu"
-            rows={2}
-            value={resourceDraft.description}
-            onChange={(event) =>
-              setResourceDraft((prev) => ({
-                ...prev,
-                description: event.target.value,
-              }))
-            }
-          />
-          <label className="rounded-lg border border-border px-3 py-2 text-sm text-zinc-300 md:col-span-2">
-            {uploadingResource
-              ? "Đang upload ảnh / tài liệu..."
-              : "Upload ảnh / docx / pdf / file khác"}
-            <input
-              type="file"
-              className="mt-2 block w-full text-xs"
+          <div
+            className={`rounded-lg border px-3 py-5 text-center text-sm ${
+              isDragOverResource
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-border text-zinc-300"
+            }`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!uploadingResource && !submitting) {
+                setIsDragOverResource(true);
+              }
+            }}
+            onDragLeave={() => setIsDragOverResource(false)}
+            onDrop={async (event) => {
+              event.preventDefault();
+              setIsDragOverResource(false);
+              if (uploadingResource || submitting) {
+                return;
+              }
+              const file = event.dataTransfer.files?.[0];
+              if (!file) return;
+              await uploadResourceFile(file);
+            }}
+          >
+            <p>
+              {uploadingResource
+                ? "Đang upload tài liệu..."
+                : "Kéo & thả tài liệu vào đây"}
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Hỗ trợ ảnh, PDF, DOCX và các file phổ biến khác.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary mt-3 px-3 py-1 text-xs"
               disabled={uploadingResource || submitting}
-              onChange={async (event) => {
-                const inputElement = event.currentTarget;
-                const file = inputElement.files?.[0];
-                if (!file) return;
-
-                const startedAt = Date.now();
-                setUploadingResource(true);
-                setError("");
-                setSuccess("Đang upload tài liệu...");
-                try {
-                  const filePath = await uploadMedia(
-                    file,
-                    "course-resource-files",
-                  );
-                  const inferredFileType = inferFileType(file.name);
-                  const previewUrl = file.type.startsWith("image/")
-                    ? await getMediaPreviewUrl(filePath)
-                    : "";
-
-                  const resourceTitle = resourceDraft.title.trim() || file.name;
-                  const resourceDescription = resourceDraft.description.trim();
-
-                  const resource = await createResource({
-                    lessonId,
-                    title: resourceTitle,
-                    description: resourceDescription || undefined,
-                    fileType: inferredFileType,
-                    previewImage: previewUrl || undefined,
-                    storagePath: filePath,
-                  });
-
-                  setResourceDraft({
-                    title: "",
-                    description: "",
-                    fileType: ".PDF",
-                    storagePath: "",
-                    previewImage: "",
-                  });
-                  setResources((prev) => [...prev, resource]);
-                  setSuccess("Đã upload và thêm tài liệu khóa học.");
-                  showToast({
-                    type: "success",
-                    message: "Đã upload và thêm tài liệu vào danh sách.",
-                  });
-                } catch (err) {
-                  const message =
-                    err instanceof Error
-                      ? err.message
-                      : "Upload tài liệu thất bại.";
-                  setError(message);
-                  showToast({ type: "error", message });
-                } finally {
-                  await ensureLoadingVisible(startedAt);
-                  setUploadingResource(false);
-                  inputElement.value = "";
-                }
-              }}
-            />
-          </label>
+              onClick={() => resourceFileInputRef.current?.click()}
+            >
+              Chọn file từ máy
+            </button>
+          </div>
 
           {uploadingResource && (
-            <div className="md:col-span-2 flex items-center gap-2 rounded-lg border border-border bg-black/20 px-3 py-2 text-xs text-zinc-300">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-black/20 px-3 py-2 text-xs text-zinc-300">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent" />
               Đang upload tài liệu, vui lòng chờ...
             </div>
           )}
         </div>
 
-        <div className="space-y-2">
-          {lessonResources.map((resource) => (
-            <article
-              key={resource.id}
-              className="rounded-lg border border-border p-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-white">
+        <div className="rounded-lg border border-border">
+          <ul className="divide-y divide-border">
+            {lessonResources.map((resource) => (
+              <li
+                key={resource.id}
+                className="flex flex-wrap items-center justify-between gap-2 p-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white">
                     {resource.title}
                   </p>
                   <p className="text-xs text-zinc-400">{resource.file_type}</p>
@@ -558,12 +559,12 @@ export default function AdminLessonDetailPage() {
                     Xóa
                   </button>
                 </div>
-              </div>
-            </article>
-          ))}
+              </li>
+            ))}
+          </ul>
 
           {lessonResources.length === 0 && (
-            <p className="text-sm text-zinc-500">
+            <p className="p-3 text-sm text-zinc-500">
               Chưa có tài liệu cho bài học này.
             </p>
           )}
