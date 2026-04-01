@@ -43,8 +43,7 @@ export default async function Home() {
             <div
               className="h-64 rounded-xl bg-cover bg-center md:h-80"
               style={{
-                backgroundImage:
-                  "url(https://images.unsplash.com/photo-1586941960715-4f59fe28f0df?q=80&w=1200&auto=format&fit=crop)",
+                backgroundImage: `url(${featured[0]?.thumbnail ?? ""})`,
               }}
             />
           </div>
