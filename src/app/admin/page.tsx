@@ -56,6 +56,12 @@ type LeadItem = {
 
 type AdminTab = "overview" | "approvals" | "users" | "orders";
 
+const parseCourseSlugs = (value: string) =>
+  value
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
 export default function AdminPage() {
   const { user, orders, purchasedCourseSlugs, showToast } = useAppState();
 
@@ -84,6 +90,10 @@ export default function AdminPage() {
   const [isSubmittingCourse, setIsSubmittingCourse] = useState(false);
   const [isSubmittingResource, setIsSubmittingResource] = useState(false);
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+  const [approvalPending, setApprovalPending] = useState<{
+    requestId: string;
+    action: "close" | "provision-account" | "grant-course-access";
+  } | null>(null);
   const [actionNotice, setActionNotice] = useState("");
 
   const [generatedPassword, setGeneratedPassword] = useState("");
@@ -287,6 +297,7 @@ export default function AdminPage() {
     try {
       const response = await fetch("/api/admin/approvals", {
         cache: "no-store",
+        credentials: "include",
       });
       const result = await response.json();
       if (!response.ok) {
@@ -509,11 +520,13 @@ export default function AdminPage() {
     status: "new" | "paid" | "closed",
   ) => {
     setIsSubmittingApproval(true);
+    setApprovalPending({ requestId, action: "close" });
     setApprovalError("");
     try {
       const response = await fetch("/api/admin/approvals", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ requestId, status }),
       });
       const result = await response.json();
@@ -527,6 +540,7 @@ export default function AdminPage() {
       setApprovalError("Không thể kết nối API phê duyệt.");
     } finally {
       setIsSubmittingApproval(false);
+      setApprovalPending(null);
     }
   };
 
@@ -535,12 +549,14 @@ export default function AdminPage() {
     action: "provision-account" | "grant-course-access",
   ) => {
     setIsSubmittingApproval(true);
+    setApprovalPending({ requestId, action });
     setApprovalError("");
     setApprovedCredential(null);
     try {
       const response = await fetch("/api/admin/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ requestId, action }),
       });
       const result = await response.json();
@@ -573,6 +589,7 @@ export default function AdminPage() {
       setApprovalError("Không thể kết nối API xử lý yêu cầu.");
     } finally {
       setIsSubmittingApproval(false);
+      setApprovalPending(null);
     }
   };
 
@@ -684,7 +701,7 @@ export default function AdminPage() {
             }}
             disabled={isRefreshing}
           >
-            Tải lại dữ liệu
+            {isRefreshing ? "Đang tải dữ liệu..." : "Tải lại dữ liệu"}
           </button>
         </div>
       </div>
@@ -739,6 +756,11 @@ export default function AdminPage() {
             </button>
           ))}
         </div>
+        {isRefreshing && (
+          <p className="px-1 pt-2 text-xs text-zinc-500">
+            Hệ thống đang đồng bộ dữ liệu, vui lòng chờ trong giây lát...
+          </p>
+        )}
       </section>
 
       {activeTab === "overview" && (
@@ -874,50 +896,72 @@ export default function AdminPage() {
                 key={item.id}
                 className="rounded-lg border border-border p-3"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">
-                      {item.full_name || "(Chưa có tên)"}
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      {item.email} · {item.phone || "--"}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {item.course_slug} · trạng thái: {item.status}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      Mật khẩu hiện tại: {item.plain_password}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      className="btn-secondary px-3 py-2 text-xs"
-                      onClick={() =>
-                        updateUser(item.id, {
-                          status:
-                            item.status === "active" ? "blocked" : "active",
-                        })
-                      }
-                    >
-                      {item.status === "active" ? "Khóa" : "Mở khóa"}
-                    </button>
-                    <button
-                      className="btn-secondary px-3 py-2 text-xs"
-                      onClick={() =>
-                        updateUser(item.id, { resetPassword: true })
-                      }
-                    >
-                      Reset mật khẩu
-                    </button>
-                    <button
-                      className="btn-secondary px-3 py-2 text-xs"
-                      disabled={isSubmittingUser}
-                      onClick={() => deleteUserAccount(item)}
-                    >
-                      Xóa tài khoản
-                    </button>
-                  </div>
-                </div>
+                {(() => {
+                  const userCourseSlugs = parseCourseSlugs(item.course_slug);
+                  return (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">
+                          {item.full_name || "(Chưa có tên)"}
+                        </p>
+                        <p className="text-xs text-zinc-400">
+                          {item.email} · {item.phone || "--"}
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          Trạng thái: {item.status}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {userCourseSlugs.length > 0 ? (
+                            userCourseSlugs.map((slug) => (
+                              <span
+                                key={`${item.id}-${slug}`}
+                                className="rounded-full border border-border px-2 py-1 text-[11px] text-zinc-300"
+                                title={slug}
+                              >
+                                {courseSlugMap.get(slug) ?? slug}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-zinc-500">
+                              Chưa có khóa học được cấp quyền.
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-500">
+                          Mật khẩu hiện tại: {item.plain_password}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="btn-secondary px-3 py-2 text-xs"
+                          onClick={() =>
+                            updateUser(item.id, {
+                              status:
+                                item.status === "active" ? "blocked" : "active",
+                            })
+                          }
+                        >
+                          {item.status === "active" ? "Khóa" : "Mở khóa"}
+                        </button>
+                        <button
+                          className="btn-secondary px-3 py-2 text-xs"
+                          onClick={() =>
+                            updateUser(item.id, { resetPassword: true })
+                          }
+                        >
+                          Reset mật khẩu
+                        </button>
+                        <button
+                          className="btn-secondary px-3 py-2 text-xs"
+                          disabled={isSubmittingUser}
+                          onClick={() => deleteUserAccount(item)}
+                        >
+                          Xóa tài khoản
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </article>
             ))}
           </div>
@@ -998,6 +1042,13 @@ export default function AdminPage() {
               <p className="text-zinc-400">Đang tải danh sách yêu cầu chờ...</p>
             )}
 
+            {!isLoadingLeads && isSubmittingApproval && (
+              <p className="rounded-lg border border-border bg-black/20 p-2 text-xs text-zinc-400">
+                Đang xử lý phê duyệt, danh sách sẽ tự cập nhật sau khi hoàn
+                tất...
+              </p>
+            )}
+
             {!isLoadingLeads && filteredLeads.length === 0 && (
               <p className="text-zinc-400">Chưa có yêu cầu cần phê duyệt.</p>
             )}
@@ -1032,10 +1083,29 @@ export default function AdminPage() {
                   · Trạng thái:{" "}
                   {lead.status === "new"
                     ? "Mới"
-                    : lead.status === "paid"
-                      ? "Đã duyệt"
-                      : "Đã từ chối"}
+                    : lead.status === "contacted"
+                      ? "Đã liên hệ"
+                      : lead.status === "paid"
+                        ? "Đã duyệt"
+                        : "Đã từ chối"}
                 </p>
+
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                  {lead.has_account ? (
+                    <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                      Đã có tài khoản
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-200">
+                      Chưa có tài khoản
+                    </span>
+                  )}
+                  {lead.approval_flow === "already-granted" && (
+                    <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                      Đã có truy cập khóa học
+                    </span>
+                  )}
+                </div>
 
                 <div className="mt-2 flex flex-wrap gap-2">
                   {lead.status !== "paid" ? (
@@ -1045,50 +1115,49 @@ export default function AdminPage() {
                         disabled={isSubmittingApproval}
                         onClick={() => updateLeadStatus(lead.id, "closed")}
                       >
-                        Từ chối yêu cầu
+                        {approvalPending?.requestId === lead.id &&
+                        approvalPending?.action === "close"
+                          ? "Đang từ chối..."
+                          : "Từ chối yêu cầu"}
                       </button>
 
-                      {lead.approval_flow === "provision-account" && (
-                        <button
-                          className="btn-primary px-3 py-2 text-xs"
-                          disabled={isSubmittingApproval}
-                          onClick={() =>
-                            approveLead(lead.id, "provision-account")
-                          }
-                        >
-                          Cấp tài khoản lần đầu
-                        </button>
-                      )}
+                      {!lead.has_account &&
+                        lead.approval_flow !== "invalid" && (
+                          <button
+                            className="btn-primary px-3 py-2 text-xs"
+                            disabled={isSubmittingApproval}
+                            onClick={() =>
+                              approveLead(lead.id, "provision-account")
+                            }
+                          >
+                            {approvalPending?.requestId === lead.id &&
+                            approvalPending?.action === "provision-account"
+                              ? "Đang cấp tài khoản..."
+                              : "Cấp tài khoản"}
+                          </button>
+                        )}
 
-                      {lead.approval_flow === "grant-course-access" && (
-                        <button
-                          className="btn-primary px-3 py-2 text-xs"
-                          disabled={isSubmittingApproval}
-                          onClick={() =>
-                            approveLead(lead.id, "grant-course-access")
-                          }
-                        >
-                          Cấp quyền truy cập khóa học
-                        </button>
-                      )}
-
-                      {lead.approval_flow === "already-granted" && (
-                        <button
-                          className="btn-secondary px-3 py-2 text-xs"
-                          disabled={isSubmittingApproval}
-                          onClick={() => updateLeadStatus(lead.id, "paid")}
-                        >
-                          Đánh dấu đã duyệt
-                        </button>
-                      )}
+                      {lead.has_account &&
+                        lead.approval_flow !== "invalid" &&
+                        lead.approval_flow !== "already-granted" && (
+                          <button
+                            className="btn-primary px-3 py-2 text-xs"
+                            disabled={isSubmittingApproval}
+                            onClick={() =>
+                              approveLead(lead.id, "grant-course-access")
+                            }
+                          >
+                            {approvalPending?.requestId === lead.id &&
+                            approvalPending?.action === "grant-course-access"
+                              ? "Đang cấp truy cập..."
+                              : "Cấp truy cập khóa học"}
+                          </button>
+                        )}
 
                       {lead.approval_flow === "invalid" && (
-                        <button
-                          className="btn-secondary px-3 py-2 text-xs opacity-60"
-                          disabled
-                        >
+                        <span className="rounded-lg border border-border px-3 py-2 text-xs text-zinc-500">
                           Không đủ dữ liệu để xử lý
-                        </button>
+                        </span>
                       )}
                     </>
                   ) : null}

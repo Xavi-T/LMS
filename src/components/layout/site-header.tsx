@@ -26,6 +26,11 @@ export function SiteHeader() {
         : baseLinks;
 
   const handleLogout = async () => {
+    const confirmed = window.confirm("Bạn có chắc muốn đăng xuất không?");
+    if (!confirmed) {
+      return;
+    }
+
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {

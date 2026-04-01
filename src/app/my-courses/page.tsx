@@ -131,45 +131,62 @@ export default function MyCoursesPage() {
       )}
 
       <section className="grid gap-4 md:grid-cols-2">
-        {coursesWithProgress.map((course) => (
-          <article key={course.slug} className="card overflow-hidden">
-            <div
-              className={`h-40 bg-center ${course.thumbnail?.trim() ? "bg-cover" : "bg-linear-to-br from-zinc-800 to-zinc-900"}`}
-              style={
-                course.thumbnail?.trim()
-                  ? { backgroundImage: `url(${course.thumbnail})` }
-                  : undefined
-              }
-            />
+        {coursesWithProgress.map((course) => {
+          const canNavigate = Boolean(course.firstLessonId);
+          const learnHref = canNavigate
+            ? `/learn/${course.slug}/${course.firstLessonId}`
+            : null;
 
-            <div className="space-y-3 p-4">
-              <div>
-                <h2 className="text-lg font-bold">{course.title}</h2>
-                <p className="mt-1 text-sm text-zinc-400">
-                  {course.shortDescription}
-                </p>
+          return (
+            <article
+              key={course.slug}
+              className={`card relative overflow-hidden transition ${canNavigate ? "group cursor-pointer hover:-translate-y-1 hover:border-accent/50" : ""}`}
+            >
+              {learnHref && (
+                <Link
+                  href={learnHref}
+                  className="absolute inset-0 z-10"
+                  aria-label={`Vào học khóa ${course.title}`}
+                />
+              )}
+              <div
+                className={`aspect-video bg-center ${course.thumbnail?.trim() ? "bg-cover" : "bg-linear-to-br from-zinc-800 to-zinc-900"}`}
+                style={
+                  course.thumbnail?.trim()
+                    ? { backgroundImage: `url(${course.thumbnail})` }
+                    : undefined
+                }
+              />
+
+              <div className="relative z-20 space-y-3 p-4">
+                <div>
+                  <h2 className="text-lg font-bold">{course.title}</h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    {course.shortDescription}
+                  </p>
+                </div>
+
+                <ProgressBar value={course.done} total={course.totalLessons} />
+
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span>
+                    Hoàn thành: {course.done}/{course.totalLessons} bài học
+                  </span>
+                  {learnHref ? (
+                    <Link
+                      href={learnHref}
+                      className="relative z-30 text-accent"
+                    >
+                      Vào học
+                    </Link>
+                  ) : (
+                    <span>Chưa có bài học</span>
+                  )}
+                </div>
               </div>
-
-              <ProgressBar value={course.done} total={course.totalLessons} />
-
-              <div className="flex items-center justify-between text-xs text-zinc-400">
-                <span>
-                  Hoàn thành: {course.done}/{course.totalLessons} bài học
-                </span>
-                {course.firstLessonId ? (
-                  <Link
-                    href={`/learn/${course.slug}/${course.firstLessonId}`}
-                    className="text-accent"
-                  >
-                    Vào học
-                  </Link>
-                ) : (
-                  <span>Chưa có bài học</span>
-                )}
-              </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </section>
     </div>
   );

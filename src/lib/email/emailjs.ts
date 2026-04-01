@@ -6,6 +6,8 @@ interface EmailJsAccountPayload {
   loginPassword: string;
   orderRef: string;
   transferNote?: string;
+  emailSubject?: string;
+  emailBody?: string;
   source:
     | "checkout"
     | "admin-approval"
@@ -26,6 +28,33 @@ const hasEmailJsEnv = () => {
   );
 };
 
+const normalizeBodyForTemplate = (body: string) =>
+  body.replace(/\n/g, "<br />");
+
+const buildFallbackSubject = (payload: EmailJsAccountPayload) => {
+  if (payload.source === "admin-course-access") {
+    return "Kích hoạt quyền truy cập khóa học SPORTPRINT LMS";
+  }
+
+  if (payload.source === "admin-account-provision") {
+    return "Tài khoản học tập SPORTPRINT LMS";
+  }
+
+  return "Thông báo từ SPORTPRINT LMS";
+};
+
+const buildFallbackBody = (payload: EmailJsAccountPayload) => {
+  if (payload.source === "admin-course-access") {
+    return normalizeBodyForTemplate(
+      `Xin chào ${payload.studentName},\nBạn đã được cấp quyền truy cập khóa học ${payload.courseSlug}.\nĐăng nhập bằng email: ${payload.loginEmail}.`,
+    );
+  }
+
+  return normalizeBodyForTemplate(
+    `Xin chào ${payload.studentName},\nTài khoản học tập của bạn đã sẵn sàng.\nEmail: ${payload.loginEmail}\nMật khẩu: ${payload.loginPassword}`,
+  );
+};
+
 export const sendAccountEmailViaEmailJs = async (
   payload: EmailJsAccountPayload,
 ): Promise<EmailJsSendResult> => {
@@ -34,6 +63,13 @@ export const sendAccountEmailViaEmailJs = async (
   }
 
   try {
+    const resolvedSubject = payload.emailSubject?.trim()
+      ? payload.emailSubject.trim()
+      : buildFallbackSubject(payload);
+    const resolvedBody = payload.emailBody?.trim()
+      ? normalizeBodyForTemplate(payload.emailBody.trim())
+      : buildFallbackBody(payload);
+
     const response = await fetch(
       "https://api.emailjs.com/api/v1.0/email/send",
       {
@@ -54,6 +90,8 @@ export const sendAccountEmailViaEmailJs = async (
             login_password: payload.loginPassword,
             order_ref: payload.orderRef,
             transfer_note: payload.transferNote ?? "",
+            email_subject: resolvedSubject,
+            email_body: resolvedBody,
             source: payload.source,
           },
         }),

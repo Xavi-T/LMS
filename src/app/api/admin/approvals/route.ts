@@ -71,6 +71,8 @@ const sendAndTrackEmail = async (
     loginPassword: params.loginPassword,
     orderRef: params.orderRef,
     transferNote: params.transferNote,
+    emailSubject: params.subject,
+    emailBody: params.body,
     source: params.source,
   });
 
@@ -251,6 +253,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!action) {
+    return NextResponse.json(
+      {
+        error:
+          "action là bắt buộc và phải là provision-account hoặc grant-course-access.",
+      },
+      { status: 400 },
+    );
+  }
+
   const supabase = getSupabaseServiceClient();
   if (!supabase) {
     return NextResponse.json(
@@ -303,44 +315,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const currentOwnedCourses = parseCourseSlugs(existingAccount?.course_slug);
   const requestedCourse = requestRow.course_slug.trim().toLowerCase();
-  const alreadyGranted = currentOwnedCourses.includes(requestedCourse);
-
-  let resolvedAction: "provision-account" | "grant-course-access";
-
-  if (!existingAccount) {
-    resolvedAction = "provision-account";
-  } else if (alreadyGranted) {
-    resolvedAction = "grant-course-access";
-  } else {
-    resolvedAction = "grant-course-access";
-  }
-
-  if (
-    action &&
-    action !== resolvedAction &&
-    !(alreadyGranted && action === "grant-course-access")
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          resolvedAction === "provision-account"
-            ? "Yêu cầu này cần cấp tài khoản lần đầu."
-            : "Yêu cầu này cần cấp quyền truy cập khóa học.",
-      },
-      { status: 400 },
-    );
-  }
-
-  const mergedCourseSlug = serializeCourseSlugs([
-    ...currentOwnedCourses,
-    requestedCourse,
-  ]);
+  const currentOwnedCourses = parseCourseSlugs(existingAccount?.course_slug);
+  const alreadyGranted = requestedCourse
+    ? currentOwnedCourses.includes(requestedCourse)
+    : false;
 
   let accountPassword = existingAccount?.plain_password ?? "";
+  const emailResults: Array<{ sent: boolean; error?: string }> = [];
+  const studentName = requestRow.full_name ?? "Học viên";
+  const orderRef = requestRow.order_ref || `APPROVE-${requestRow.id}`;
+  const transferNote = requestRow.transfer_note || undefined;
 
-  if (resolvedAction === "provision-account") {
+  if (action === "provision-account") {
+    if (existingAccount) {
+      return NextResponse.json(
+        {
+          error:
+            "Email này đã có tài khoản. Hãy dùng hành động cấp quyền truy cập khóa học.",
+        },
+        { status: 400 },
+      );
+    }
+
     accountPassword = createPassword();
     const { error: accountError } = await supabase
       .from("customer_accounts")
@@ -349,7 +346,7 @@ export async function POST(request: NextRequest) {
         phone: requestRow.phone,
         full_name: requestRow.full_name,
         plain_password: accountPassword,
-        course_slug: mergedCourseSlug,
+        course_slug: "",
         order_ref: requestRow.order_ref || `APPROVE-${requestRow.id}`,
         status: "active",
       });
@@ -360,7 +357,83 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
-  } else if (!alreadyGranted) {
+
+    const accountSubject = "Tài khoản học tập SPORTPRINT LMS đã được tạo";
+    const accountBody = [
+      `Xin chào ${studentName},`,
+      "",
+      "Admin đã phê duyệt và tạo tài khoản học tập cho bạn.",
+      `Email đăng nhập: ${email}`,
+      `Mật khẩu tạm thời: ${accountPassword}`,
+      "",
+      "Bạn có thể đăng nhập ngay để kiểm tra tài khoản.",
+      "Quyền truy cập khóa học sẽ được cấp ở bước phê duyệt tiếp theo.",
+      "",
+      `Mã tham chiếu: ${orderRef}`,
+    ].join("\n");
+
+    emailResults.push(
+      await sendAndTrackEmail(supabase, {
+        email,
+        subject: accountSubject,
+        body: accountBody,
+        studentName,
+        courseSlug: requestedCourse,
+        loginEmail: email,
+        loginPassword: accountPassword,
+        orderRef,
+        transferNote,
+        source: "admin-account-provision",
+      }),
+    );
+
+    const emailStatus = emailResults.every((item) => item.sent)
+      ? "sent"
+      : "failed";
+    const emailError = emailResults
+      .filter((item) => !item.sent)
+      .map((item) => item.error)
+      .filter(Boolean)
+      .join(" | ");
+
+    return NextResponse.json({
+      approved: true,
+      action: "provision-account",
+      credential: {
+        email,
+        password: accountPassword,
+        courseSlug: requestRow.course_slug,
+      },
+      message:
+        "Đã cấp tài khoản học viên. Bạn có thể phê duyệt truy cập khóa học ở bước riêng.",
+      emailStatus,
+      emailError: emailError || undefined,
+    });
+  }
+
+  if (!requestedCourse) {
+    return NextResponse.json(
+      { error: "Yêu cầu chưa có course_slug để cấp quyền truy cập khóa học." },
+      { status: 400 },
+    );
+  }
+
+  if (!existingAccount) {
+    return NextResponse.json(
+      {
+        error:
+          "Học viên chưa có tài khoản. Hãy cấp tài khoản trước khi cấp quyền truy cập khóa học.",
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!alreadyGranted) {
+    const mergedCourseSlug = serializeCourseSlugs([
+      ...currentOwnedCourses,
+      requestedCourse,
+    ]);
+
     const { error: accountError } = await supabase
       .from("customer_accounts")
       .update({
@@ -377,49 +450,19 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
-  }
 
-  const { error: requestUpdateError } = await supabase
-    .from("enrollment_requests")
-    .update({ status: "paid" })
-    .eq("id", requestRow.id);
-
-  if (requestUpdateError) {
-    return NextResponse.json(
-      { error: formatSupabaseError(requestUpdateError) },
-      { status: 500 },
-    );
-  }
-
-  const emailResults: Array<{ sent: boolean; error?: string }> = [];
-  const studentName = requestRow.full_name ?? "Học viên";
-  const orderRef = requestRow.order_ref || `APPROVE-${requestRow.id}`;
-  const transferNote = requestRow.transfer_note || undefined;
-
-  if (!alreadyGranted) {
-    if (resolvedAction === "provision-account") {
-      const accountSubject =
-        "Tài khoản học tập SPORTPRINT LMS (Admin phê duyệt)";
-      const accountBody = `Xin chào ${studentName}, tài khoản học tập của bạn đã được tạo thành công. Email: ${email} | Mật khẩu: ${accountPassword}.`;
-
-      emailResults.push(
-        await sendAndTrackEmail(supabase, {
-          email,
-          subject: accountSubject,
-          body: accountBody,
-          studentName,
-          courseSlug: requestedCourse,
-          loginEmail: email,
-          loginPassword: accountPassword,
-          orderRef,
-          transferNote,
-          source: "admin-account-provision",
-        }),
-      );
-    }
-
-    const accessSubject = "Kích hoạt quyền truy cập khóa học SPORTPRINT LMS";
-    const accessBody = `Xin chào ${studentName}, bạn đã được cấp quyền truy cập khóa học ${requestedCourse} trên tài khoản ${email}.`;
+    const accessSubject = "Quyền truy cập khóa học đã được kích hoạt";
+    const accessBody = [
+      `Xin chào ${studentName},`,
+      "",
+      "Admin đã phê duyệt quyền học cho tài khoản của bạn.",
+      `Khóa học đã mở: ${requestedCourse}`,
+      `Tài khoản truy cập: ${email}`,
+      "",
+      "Bạn có thể vào mục Khóa học của tôi để bắt đầu học ngay.",
+      "",
+      `Mã tham chiếu: ${orderRef}`,
+    ].join("\n");
 
     emailResults.push(
       await sendAndTrackEmail(supabase, {
@@ -437,6 +480,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { error: requestUpdateError } = await supabase
+    .from("enrollment_requests")
+    .update({ status: "paid" })
+    .eq("id", requestRow.id);
+
+  if (requestUpdateError) {
+    return NextResponse.json(
+      { error: formatSupabaseError(requestUpdateError) },
+      { status: 500 },
+    );
+  }
+
   const emailStatus = emailResults.every((item) => item.sent)
     ? "sent"
     : "failed";
@@ -448,7 +503,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     approved: true,
-    action: alreadyGranted ? "already-granted" : resolvedAction,
+    action: alreadyGranted ? "already-granted" : "grant-course-access",
     credential: {
       email,
       password: accountPassword,
@@ -456,9 +511,7 @@ export async function POST(request: NextRequest) {
     },
     message: alreadyGranted
       ? "Học viên đã có quyền truy cập khóa học này trước đó."
-      : resolvedAction === "provision-account"
-        ? "Đã cấp tài khoản lần đầu và gửi 2 email (tài khoản + quyền truy cập khóa học)."
-        : "Đã cấp quyền truy cập khóa học cho tài khoản hiện có.",
+      : "Đã cấp quyền truy cập khóa học cho tài khoản hiện có.",
     emailStatus,
     emailError: emailError || undefined,
   });

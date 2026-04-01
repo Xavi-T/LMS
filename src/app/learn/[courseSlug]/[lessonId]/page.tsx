@@ -219,10 +219,7 @@ export default function LearningPage({
             : "hidden md:block md:w-0 md:overflow-hidden md:border-r-0 md:p-0"
         }`}
       >
-        <Link href="/courses" className="text-xs text-accent">
-          ← Quay lại khóa học
-        </Link>
-        <div className="mt-2">
+        <div>
           <button
             type="button"
             className="btn-secondary px-3 py-1 text-xs"
@@ -272,7 +269,10 @@ export default function LearningPage({
       </aside>
 
       <section className="min-w-0 space-y-4 p-4 md:p-6">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-2">
+          <Link href="/courses" className="btn-secondary px-3 py-2 text-xs">
+            ← Quay lại khóa học
+          </Link>
           <button
             type="button"
             className="btn-secondary px-3 py-2 text-xs"
