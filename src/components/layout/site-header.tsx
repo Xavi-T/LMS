@@ -14,6 +14,7 @@ const baseLinks = [
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { user, logout } = useAppState();
   const visibleLinks =
     user?.role === "admin"
@@ -27,16 +28,22 @@ export function SiteHeader() {
         : baseLinks;
 
   const handleLogout = async () => {
+    if (isLoggingOut) {
+      return;
+    }
+
     const confirmed = window.confirm("Bạn có chắc muốn đăng xuất không?");
     if (!confirmed) {
       return;
     }
 
+    setIsLoggingOut(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
     } finally {
       logout();
+      setIsLoggingOut(false);
     }
   };
 
@@ -74,9 +81,10 @@ export function SiteHeader() {
               </span>
               <button
                 onClick={handleLogout}
+                disabled={isLoggingOut}
                 className="btn-secondary px-3 py-2 text-sm"
               >
-                Đăng xuất
+                {isLoggingOut ? "Đang đăng xuất..." : "Đăng xuất"}
               </button>
             </>
           ) : (
@@ -108,12 +116,16 @@ export function SiteHeader() {
               {user ? (
                 <button
                   onClick={() => {
-                    handleLogout();
-                    setOpen(false);
+                    if (!isLoggingOut) {
+                      void handleLogout();
+                      setOpen(false);
+                    }
                   }}
+                  disabled={isLoggingOut}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
                 >
-                  <UserCircle2 size={16} /> Đăng xuất
+                  <UserCircle2 size={16} />
+                  {isLoggingOut ? "Đang đăng xuất..." : "Đăng xuất"}
                 </button>
               ) : (
                 <Link
