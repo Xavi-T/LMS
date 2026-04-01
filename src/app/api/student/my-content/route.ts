@@ -7,7 +7,7 @@ const parseCourseSlugs = (value: string | null | undefined) => {
   if (!value) return [] as string[];
   return value
     .split(",")
-    .map((item) => item.trim())
+    .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 };
 
@@ -78,7 +78,9 @@ export async function GET(request: NextRequest) {
 
   const { data: courses, error: coursesError } = await supabase
     .from("courses")
-    .select("id, slug, title, short_description, price")
+    .select(
+      "id, slug, title, short_description, category, level, created_at, students_count, price, thumbnail",
+    )
     .in("slug", ownedSlugs)
     .order("created_at", { ascending: false });
 
@@ -159,21 +161,28 @@ export async function GET(request: NextRequest) {
     lessonByChapter.set(lesson.chapter_id, [...list, lesson.id]);
   }
 
-  const coursesResponse = courseRows.map((course) => {
-    const chapterIdsOfCourse = chapterByCourse.get(course.id) ?? [];
-    const allLessonIds = chapterIdsOfCourse.flatMap(
-      (chapterId) => lessonByChapter.get(chapterId) ?? [],
-    );
+  const coursesResponse = await Promise.all(
+    courseRows.map(async (course) => {
+      const chapterIdsOfCourse = chapterByCourse.get(course.id) ?? [];
+      const allLessonIds = chapterIdsOfCourse.flatMap(
+        (chapterId) => lessonByChapter.get(chapterId) ?? [],
+      );
 
-    return {
-      slug: course.slug,
-      title: course.title,
-      shortDescription: course.short_description,
-      price: course.price,
-      totalLessons: allLessonIds.length,
-      firstLessonId: allLessonIds[0] ?? null,
-    };
-  });
+      return {
+        slug: course.slug,
+        title: course.title,
+        shortDescription: course.short_description,
+        category: course.category,
+        level: course.level,
+        createdAt: course.created_at,
+        studentsCount: course.students_count,
+        price: course.price,
+        thumbnail: await resolveMediaUrl(course.thumbnail, supabase),
+        totalLessons: allLessonIds.length,
+        firstLessonId: allLessonIds[0] ?? null,
+      };
+    }),
+  );
 
   const courseTitleMap = new Map(
     courseRows.map((item) => [item.id, item.title]),

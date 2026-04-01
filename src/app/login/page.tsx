@@ -57,7 +57,7 @@ export default function LoginPage() {
           : [],
       });
 
-      router.push("/dashboard");
+      router.push(apiRole === "student" ? "/my-courses" : "/dashboard");
     } catch {
       setLoginError("Không thể kết nối máy chủ. Vui lòng thử lại.");
     } finally {

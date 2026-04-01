@@ -267,21 +267,6 @@ export default async function CourseDetailPage({
               >
                 Mua ngay
               </Link>
-              {firstLessonId ? (
-                <Link
-                  href={`/learn/${course.slug}/${firstLessonId}`}
-                  className="btn-secondary block px-4 py-3 text-center text-sm"
-                >
-                  Đăng ký học thử
-                </Link>
-              ) : (
-                <button
-                  className="btn-secondary block w-full cursor-not-allowed px-4 py-3 text-center text-sm opacity-70"
-                  disabled
-                >
-                  Chưa có bài học thử
-                </button>
-              )}
             </>
           )}
           <div className="text-sm text-zinc-300">

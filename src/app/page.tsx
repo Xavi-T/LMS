@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
@@ -11,13 +9,6 @@ import { CourseCard } from "@/components/course/course-card";
 import { courses, feedbacks } from "@/lib/mock-data";
 
 export default async function Home() {
-  const cookieStore = await cookies();
-  const role = cookieStore.get("lms_role")?.value;
-
-  if (role === "student") {
-    redirect("/dashboard");
-  }
-
   const featured = courses.slice(0, 3);
 
   return (
@@ -37,12 +28,6 @@ export default async function Home() {
               toán VietQR trong một hệ thống.
             </p>
             <div className="mt-6 flex gap-3">
-              <Link
-                href="/chuong-trinh-thuc-chien"
-                className="btn-secondary px-4 py-3 text-sm"
-              >
-                Xem chương trình
-              </Link>
               <Link href="/courses" className="btn-primary px-4 py-3 text-sm">
                 Xem khóa học
               </Link>

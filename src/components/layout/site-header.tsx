@@ -5,11 +5,9 @@ import { Menu, UserCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useAppState } from "@/contexts/app-context";
 
-const links = [
+const baseLinks = [
   { href: "/", label: "Trang chủ" },
-  { href: "/chuong-trinh-thuc-chien", label: "Chương trình" },
   { href: "/courses", label: "Khóa học" },
-  { href: "/dashboard", label: "Khóa học của tôi" },
   { href: "/contact", label: "Liên hệ" },
 ];
 
@@ -19,10 +17,13 @@ export function SiteHeader() {
   const visibleLinks =
     user?.role === "admin"
       ? [
-          { href: "/admin", label: "Quản lý" },
-          { href: "/admin/courses", label: "QL Khóa học" },
+          ...baseLinks,
+          { href: "/admin", label: "Quản lý chung" },
+          { href: "/admin/courses", label: "Quản lý khóa học" },
         ]
-      : links;
+      : user?.role === "student"
+        ? [...baseLinks, { href: "/my-courses", label: "Khóa học của tôi" }]
+        : baseLinks;
 
   const handleLogout = async () => {
     try {

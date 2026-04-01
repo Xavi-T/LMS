@@ -6,7 +6,11 @@ interface EmailJsAccountPayload {
   loginPassword: string;
   orderRef: string;
   transferNote?: string;
-  source: "checkout" | "admin-approval";
+  source:
+    | "checkout"
+    | "admin-approval"
+    | "admin-account-provision"
+    | "admin-course-access";
 }
 
 interface EmailJsSendResult {

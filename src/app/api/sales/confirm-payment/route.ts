@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServiceClient } from "@/lib/supabase/server";
 import { formatSupabaseError } from "@/lib/supabase/errors";
 
+const normalizePhone = (value: string | undefined) =>
+  (value ?? "").replace(/\s+/g, "").replace(/\D/g, "");
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const fullName = body?.fullName as string | undefined;
@@ -26,6 +29,7 @@ export async function POST(request: NextRequest) {
   }
 
   const email = emailInput.trim().toLowerCase();
+  const normalizedPhone = normalizePhone(phone);
 
   const supabase = getSupabaseServiceClient();
   if (!supabase) {
@@ -36,13 +40,51 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  let duplicateQuery = supabase
+    .from("enrollment_requests")
+    .select("id, order_ref")
+    .eq("course_slug", courseSlug)
+    .in("status", ["new", "contacted"])
+    .neq("order_ref", orderId)
+    .limit(1);
+
+  if (normalizedPhone) {
+    duplicateQuery = duplicateQuery.or(
+      `email.eq.${email},phone.eq.${normalizedPhone}`,
+    );
+  } else {
+    duplicateQuery = duplicateQuery.eq("email", email);
+  }
+
+  const { data: duplicate, error: duplicateError } =
+    await duplicateQuery.maybeSingle();
+
+  if (duplicateError) {
+    return NextResponse.json(
+      { error: formatSupabaseError(duplicateError) },
+      { status: 500 },
+    );
+  }
+
+  if (duplicate) {
+    return NextResponse.json(
+      {
+        pending: true,
+        requestId: duplicate.id,
+        message:
+          "Bạn đã có yêu cầu truy cập khóa học đang chờ phê duyệt. Vui lòng chờ admin xử lý.",
+      },
+      { status: 409 },
+    );
+  }
+
   const { error: requestError } = await supabase
     .from("enrollment_requests")
     .upsert(
       {
         full_name: fullName,
         email,
-        phone,
+        phone: normalizedPhone || phone,
         package_name: null,
         course_slug: courseSlug,
         order_ref: orderId,

@@ -45,6 +45,12 @@ type LeadItem = {
   package_name: string | null;
   course_slug: string | null;
   status: "new" | "contacted" | "paid" | "closed";
+  approval_flow:
+    | "provision-account"
+    | "grant-course-access"
+    | "already-granted"
+    | "invalid";
+  has_account: boolean;
   created_at: string;
 };
 
@@ -61,7 +67,7 @@ export default function AdminPage() {
 
   const [userKeyword, setUserKeyword] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState<
-    "all" | "new" | "contacted" | "paid" | "closed"
+    "all" | "new" | "paid" | "closed"
   >("all");
 
   const [userError, setUserError] = useState("");
@@ -140,9 +146,7 @@ export default function AdminPage() {
 
   const activeUsers = users.filter((item) => item.status === "active").length;
   const blockedUsers = users.filter((item) => item.status === "blocked").length;
-  const pendingApprovals = leads.filter(
-    (item) => item.status === "new" || item.status === "contacted",
-  ).length;
+  const pendingApprovals = leads.filter((item) => item.status === "new").length;
 
   const courseMap = useMemo(() => {
     return new Map(coursesData.map((item) => [item.id, item]));
@@ -502,7 +506,7 @@ export default function AdminPage() {
 
   const updateLeadStatus = async (
     requestId: string,
-    status: "new" | "contacted" | "paid" | "closed",
+    status: "new" | "paid" | "closed",
   ) => {
     setIsSubmittingApproval(true);
     setApprovalError("");
@@ -526,7 +530,10 @@ export default function AdminPage() {
     }
   };
 
-  const approveLead = async (requestId: string) => {
+  const approveLead = async (
+    requestId: string,
+    action: "provision-account" | "grant-course-access",
+  ) => {
     setIsSubmittingApproval(true);
     setApprovalError("");
     setApprovedCredential(null);
@@ -534,7 +541,7 @@ export default function AdminPage() {
       const response = await fetch("/api/admin/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId }),
+        body: JSON.stringify({ requestId, action }),
       });
       const result = await response.json();
       if (!response.ok) {
@@ -544,7 +551,12 @@ export default function AdminPage() {
 
       if (result?.credential) {
         setApprovedCredential(result.credential);
-        setActionNotice("Đã phê duyệt và cấp tài khoản học viên.");
+        setActionNotice(
+          result?.message ??
+            (action === "provision-account"
+              ? "Đã cấp tài khoản học viên lần đầu."
+              : "Đã cấp quyền truy cập khóa học cho học viên."),
+        );
       }
 
       if (result?.emailStatus === "failed") {
@@ -743,7 +755,10 @@ export default function AdminPage() {
           <article className="card p-4">
             <h2 className="text-lg font-bold">Gợi ý thao tác</h2>
             <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-              <li>- Vào tab Phê duyệt để cấp tài khoản sau thanh toán.</li>
+              <li>
+                - Vào tab Phê duyệt để tách luồng cấp tài khoản và cấp quyền
+                khóa học.
+              </li>
               <li>- Vào tab Học viên để khóa/mở khóa hoặc reset mật khẩu.</li>
               <li>
                 - Vào trang /admin/courses để quản lý khóa học, bài giảng và tài
@@ -949,19 +964,13 @@ export default function AdminPage() {
                 value={leadStatusFilter}
                 onChange={(event) =>
                   setLeadStatusFilter(
-                    event.target.value as
-                      | "all"
-                      | "new"
-                      | "contacted"
-                      | "paid"
-                      | "closed",
+                    event.target.value as "all" | "new" | "paid" | "closed",
                   )
                 }
                 className="rounded-lg border border-border bg-black px-3 py-2"
               >
                 <option value="all">Tất cả</option>
                 <option value="new">Mới</option>
-                <option value="contacted">Đã liên hệ</option>
                 <option value="paid">Đã duyệt</option>
                 <option value="closed">Đã từ chối</option>
               </select>
@@ -976,8 +985,11 @@ export default function AdminPage() {
 
           {approvedCredential && (
             <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-200">
-              Đã cấp tài khoản: {approvedCredential.email} /{" "}
-              {approvedCredential.password} ({approvedCredential.courseSlug})
+              Đã xử lý yêu cầu cho: {approvedCredential.email}
+              {approvedCredential.password
+                ? ` / ${approvedCredential.password}`
+                : ""}{" "}
+              ({approvedCredential.courseSlug})
             </p>
           )}
 
@@ -995,6 +1007,20 @@ export default function AdminPage() {
                 key={lead.id}
                 className="rounded-lg border border-border p-3"
               >
+                {(() => {
+                  const flowLabel =
+                    lead.approval_flow === "provision-account"
+                      ? "Cần cấp tài khoản lần đầu"
+                      : lead.approval_flow === "grant-course-access"
+                        ? "Cần cấp quyền truy cập khóa học"
+                        : lead.approval_flow === "already-granted"
+                          ? "Đã có quyền truy cập khóa học"
+                          : "Thiếu dữ liệu để xử lý";
+
+                  return (
+                    <p className="mb-1 text-xs text-accent">{flowLabel}</p>
+                  );
+                })()}
                 <p className="font-semibold">{lead.full_name}</p>
                 <p className="text-xs text-zinc-400">
                   {lead.email || "(chưa có email)"} · {lead.phone || "--"}
@@ -1006,11 +1032,9 @@ export default function AdminPage() {
                   · Trạng thái:{" "}
                   {lead.status === "new"
                     ? "Mới"
-                    : lead.status === "contacted"
-                      ? "Đã liên hệ"
-                      : lead.status === "paid"
-                        ? "Đã duyệt"
-                        : "Đã từ chối"}
+                    : lead.status === "paid"
+                      ? "Đã duyệt"
+                      : "Đã từ chối"}
                 </p>
 
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -1019,24 +1043,53 @@ export default function AdminPage() {
                       <button
                         className="btn-secondary px-3 py-2 text-xs"
                         disabled={isSubmittingApproval}
-                        onClick={() => updateLeadStatus(lead.id, "contacted")}
-                      >
-                        Đánh dấu đã liên hệ
-                      </button>
-                      <button
-                        className="btn-secondary px-3 py-2 text-xs"
-                        disabled={isSubmittingApproval}
                         onClick={() => updateLeadStatus(lead.id, "closed")}
                       >
                         Từ chối yêu cầu
                       </button>
-                      <button
-                        className="btn-primary px-3 py-2 text-xs"
-                        disabled={isSubmittingApproval}
-                        onClick={() => approveLead(lead.id)}
-                      >
-                        Phê duyệt cấp tài khoản
-                      </button>
+
+                      {lead.approval_flow === "provision-account" && (
+                        <button
+                          className="btn-primary px-3 py-2 text-xs"
+                          disabled={isSubmittingApproval}
+                          onClick={() =>
+                            approveLead(lead.id, "provision-account")
+                          }
+                        >
+                          Cấp tài khoản lần đầu
+                        </button>
+                      )}
+
+                      {lead.approval_flow === "grant-course-access" && (
+                        <button
+                          className="btn-primary px-3 py-2 text-xs"
+                          disabled={isSubmittingApproval}
+                          onClick={() =>
+                            approveLead(lead.id, "grant-course-access")
+                          }
+                        >
+                          Cấp quyền truy cập khóa học
+                        </button>
+                      )}
+
+                      {lead.approval_flow === "already-granted" && (
+                        <button
+                          className="btn-secondary px-3 py-2 text-xs"
+                          disabled={isSubmittingApproval}
+                          onClick={() => updateLeadStatus(lead.id, "paid")}
+                        >
+                          Đánh dấu đã duyệt
+                        </button>
+                      )}
+
+                      {lead.approval_flow === "invalid" && (
+                        <button
+                          className="btn-secondary px-3 py-2 text-xs opacity-60"
+                          disabled
+                        >
+                          Không đủ dữ liệu để xử lý
+                        </button>
+                      )}
                     </>
                   ) : null}
                 </div>

@@ -7,10 +7,14 @@ const defaultAdminPassword = "Admin@123456";
 
 const parseCourseSlugs = (value: string | null | undefined) => {
   if (!value) return [] as string[];
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 };
 
 export async function POST(request: NextRequest) {

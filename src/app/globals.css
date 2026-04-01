@@ -65,3 +65,17 @@ body {
 .btn-secondary:hover {
   border-color: var(--accent);
 }
+
+button,
+[role="button"],
+.btn-primary,
+.btn-secondary {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"],
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  cursor: not-allowed;
+}

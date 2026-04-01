@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { getCourseBySlug } from "@/lib/course";
@@ -56,6 +56,9 @@ export default function CheckoutClient({
   const [email, setEmail] = useState(user?.email ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [requestStatus, setRequestStatus] = useState("");
+  const [hasPendingApproval, setHasPendingApproval] = useState(false);
+  const [ownedAccessHref, setOwnedAccessHref] = useState<string | null>(null);
+  const [isCheckingOwnership, setIsCheckingOwnership] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [hasSubmittedApproval, setHasSubmittedApproval] = useState(false);
@@ -86,6 +89,116 @@ export default function CheckoutClient({
     return "";
   };
 
+  const normalizePhone = (value: string) =>
+    value.replace(/\s+/g, "").replace(/\D/g, "");
+
+  const checkPendingRequest = useCallback(async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = normalizePhone(phone);
+    if (!selectedCourse?.slug || !normalizedEmail) {
+      setHasPendingApproval(false);
+      return false;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        courseSlug: selectedCourse.slug,
+      });
+      const response = await fetch(
+        `/api/enrollments/request?${params.toString()}`,
+        {
+          cache: "no-store",
+        },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const pending = Boolean(result?.hasPending);
+      setHasPendingApproval(pending);
+      if (pending) {
+        setRequestStatus(
+          result?.message ??
+            "Bạn đã có yêu cầu truy cập khóa học đang chờ phê duyệt.",
+        );
+      }
+      return pending;
+    } catch {
+      return false;
+    }
+  }, [email, phone, selectedCourse?.slug]);
+
+  useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !selectedCourse?.slug) {
+      setHasPendingApproval(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void checkPendingRequest();
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [email, phone, selectedCourse?.slug, checkPendingRequest]);
+
+  useEffect(() => {
+    if (user?.role !== "student" || !selectedCourse?.slug) {
+      setOwnedAccessHref(null);
+      setIsCheckingOwnership(false);
+      return;
+    }
+
+    let active = true;
+
+    const checkOwnership = async () => {
+      setIsCheckingOwnership(true);
+      try {
+        const response = await fetch("/api/student/my-content", {
+          cache: "no-store",
+        });
+        const result = await response.json();
+
+        if (!response.ok || !active) {
+          return;
+        }
+
+        const ownedCourse = (result?.courses ?? []).find(
+          (item: { slug: string; firstLessonId?: string | null }) =>
+            item.slug?.trim().toLowerCase() ===
+            selectedCourse.slug.trim().toLowerCase(),
+        );
+
+        if (active) {
+          setOwnedAccessHref(
+            ownedCourse
+              ? ownedCourse.firstLessonId
+                ? `/learn/${selectedCourse.slug}/${ownedCourse.firstLessonId}`
+                : "/my-courses"
+              : null,
+          );
+        }
+      } catch {
+      } finally {
+        if (active) {
+          setIsCheckingOwnership(false);
+        }
+      }
+    };
+
+    void checkOwnership();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedCourse?.slug, user?.role]);
+
   const discount = useMemo(() => {
     if (!selectedCourse || !activeCoupon) return 0;
     const basePrice = packagePrice ?? selectedCourse.price;
@@ -112,6 +225,7 @@ export default function CheckoutClient({
   const finalPrice = Math.max(0, basePrice - discount);
   const transferNote = `SP-${selectedCourse.slug.slice(0, 6).toUpperCase()}-${transferNoteSeed}`;
   const activeOrder = orders.find((item) => item.id === activeOrderId);
+  const isOwnedCourse = user?.role === "student" && Boolean(ownedAccessHref);
 
   return (
     <div className="container-app grid gap-6 py-6 md:grid-cols-[1.1fr_0.9fr] md:py-10">
@@ -193,6 +307,22 @@ export default function CheckoutClient({
 
       <aside className="card h-fit space-y-4 p-4 md:sticky md:top-20">
         <h2 className="text-lg font-bold">Thông tin thanh toán</h2>
+        {isCheckingOwnership && user?.role === "student" && (
+          <p className="rounded-lg border border-border bg-black/20 p-2 text-xs text-zinc-400">
+            Đang kiểm tra quyền truy cập khóa học...
+          </p>
+        )}
+        {isOwnedCourse && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+            <p>Bạn đã sở hữu khóa học này.</p>
+            <Link
+              href={ownedAccessHref ?? "/my-courses"}
+              className="btn-primary mt-3 inline-block px-4 py-2 text-sm"
+            >
+              Truy cập khóa học
+            </Link>
+          </div>
+        )}
         {!user && (
           <p className="rounded-lg border border-accent/50 bg-accent/10 p-2 text-xs text-orange-100">
             Bạn chưa đăng nhập. Vẫn có thể tạo đơn hàng, nhưng nên đăng nhập để
@@ -210,9 +340,27 @@ export default function CheckoutClient({
         </div>
         <button
           className="btn-primary w-full py-3 text-sm"
-          disabled={isCreatingOrder || Boolean(activeOrderId)}
+          disabled={
+            isOwnedCourse ||
+            isCreatingOrder ||
+            Boolean(activeOrderId) ||
+            hasPendingApproval
+          }
           onClick={async () => {
             if (isCreatingOrder) {
+              return;
+            }
+
+            if (isOwnedCourse) {
+              return;
+            }
+
+            if (hasPendingApproval) {
+              const message =
+                "Yêu cầu truy cập của bạn đang chờ phê duyệt. Không thể tạo yêu cầu mới.";
+              setCheckoutError(message);
+              setRequestStatus(message);
+              showToast({ type: "info", message });
               return;
             }
 
@@ -227,6 +375,15 @@ export default function CheckoutClient({
             const validationError = validateBuyerInfo();
             if (validationError) {
               setCheckoutError(validationError);
+              return;
+            }
+
+            const pending = await checkPendingRequest();
+            if (pending) {
+              const message =
+                "Bạn đã có yêu cầu truy cập khóa học đang chờ phê duyệt.";
+              setCheckoutError(message);
+              showToast({ type: "info", message });
               return;
             }
 
@@ -260,8 +417,13 @@ export default function CheckoutClient({
               const payload = await response.json();
               if (!response.ok) {
                 const message =
-                  payload.error ?? "Không ghi nhận được yêu cầu trên hệ thống.";
+                  payload.message ??
+                  payload.error ??
+                  "Không ghi nhận được yêu cầu trên hệ thống.";
                 setRequestStatus(message);
+                if (payload?.pending) {
+                  setHasPendingApproval(true);
+                }
                 showToast({ type: "error", message });
                 return;
               }
@@ -283,7 +445,11 @@ export default function CheckoutClient({
             ? "Đang tạo đơn hàng..."
             : activeOrderId
               ? "Đơn hàng đã tạo"
-              : "Tạo đơn hàng"}
+              : isOwnedCourse
+                ? "Đã sở hữu khóa học"
+                : hasPendingApproval
+                  ? "Đang chờ phê duyệt"
+                  : "Tạo đơn hàng"}
         </button>
 
         {checkoutError && (
@@ -292,7 +458,7 @@ export default function CheckoutClient({
           </p>
         )}
 
-        {activeOrderId && (
+        {activeOrderId && !isOwnedCourse && (
           <div className="space-y-3 rounded-xl border border-border p-3 text-sm">
             <p>
               Đơn hàng: <span className="font-bold">{activeOrderId}</span>
@@ -315,6 +481,14 @@ export default function CheckoutClient({
               className="btn-secondary w-full py-2"
               onClick={async () => {
                 if (!activeOrderId || isProcessing || hasSubmittedApproval) {
+                  return;
+                }
+
+                if (hasPendingApproval) {
+                  const message =
+                    "Yêu cầu truy cập của bạn đang chờ phê duyệt. Không thể gửi thêm yêu cầu.";
+                  setRequestStatus(message);
+                  showToast({ type: "info", message });
                   return;
                 }
 
@@ -347,12 +521,19 @@ export default function CheckoutClient({
 
                 if (!response.ok) {
                   setRequestStatus(
-                    payload.error ?? "Không ghi nhận được yêu cầu phê duyệt",
+                    payload.message ??
+                      payload.error ??
+                      "Không ghi nhận được yêu cầu phê duyệt",
                   );
+                  if (payload?.pending) {
+                    setHasPendingApproval(true);
+                  }
                   showToast({
                     type: "error",
                     message:
-                      payload.error ?? "Không ghi nhận được yêu cầu phê duyệt",
+                      payload.message ??
+                      payload.error ??
+                      "Không ghi nhận được yêu cầu phê duyệt",
                   });
                   return;
                 }

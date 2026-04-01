@@ -6,6 +6,7 @@ import {
   CourseCard,
   type CourseCardData,
 } from "@/components/course/course-card";
+import { useAppState } from "@/contexts/app-context";
 import { COURSE_CATEGORIES } from "@/lib/mock-data";
 
 type SortType = "new" | "hot" | "price";
@@ -15,10 +16,14 @@ type PublicCourseItem = CourseCardData & {
 };
 
 export default function CoursesPage() {
+  const { user } = useAppState();
   const [category, setCategory] =
     useState<(typeof COURSE_CATEGORIES)[number]["value"]>("all");
   const [sortBy, setSortBy] = useState<SortType>("new");
   const [courseItems, setCourseItems] = useState<PublicCourseItem[]>([]);
+  const [ownedCourseSlugs, setOwnedCourseSlugs] = useState<Set<string>>(
+    new Set(),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -43,8 +48,54 @@ export default function CoursesPage() {
       }
     };
 
-    loadCourses();
+    void loadCourses();
   }, []);
+
+  useEffect(() => {
+    if (user?.role !== "student") {
+      setOwnedCourseSlugs(new Set());
+      return;
+    }
+
+    let active = true;
+
+    const loadOwnedCourseSlugs = async () => {
+      try {
+        const response = await fetch("/api/student/my-content", {
+          cache: "no-store",
+        });
+        const result = await response.json();
+
+        if (!response.ok || !active) {
+          return;
+        }
+
+        const nextOwned = new Set<string>(
+          (result?.courses ?? [])
+            .map((course: { slug?: string }) =>
+              course.slug?.trim().toLowerCase(),
+            )
+            .filter((slug: string | undefined): slug is string =>
+              Boolean(slug),
+            ),
+        );
+
+        if (active) {
+          setOwnedCourseSlugs(nextOwned);
+        }
+      } catch {
+        if (active) {
+          setOwnedCourseSlugs(new Set());
+        }
+      }
+    };
+
+    void loadOwnedCourseSlugs();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.role]);
 
   const filtered = useMemo(() => {
     let list = courseItems.filter((course) =>
@@ -141,7 +192,12 @@ export default function CoursesPage() {
           </p>
         )}
         {filtered.map((course) => (
-          <CourseCard key={course.slug} course={course} />
+          <CourseCard
+            key={course.slug}
+            course={course}
+            cardHref={`/courses/${course.slug}`}
+            isOwned={ownedCourseSlugs.has(course.slug.trim().toLowerCase())}
+          />
         ))}
       </section>
 
